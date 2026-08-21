@@ -196,7 +196,7 @@
 
   function personCollectionForAccrediti(ac){ return ac === "accrediti_adulti" ? "personaggi_adulti" : "personaggi_studenti"; }
   function narratorEvent(pgId, section, summary, changes){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),section:section||"Narratore",summary:summary||"Intervento del Narratore",changes:Array.isArray(changes)?changes:[]}; }
-  function snapshotEvent(pgId,state,reason,protect){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),reason:reason||"Snapshot Narratore",protected:!!protect,state:state||{},sizeBytes:JSON.stringify(state||{}).length,schemaVersion:22}; }
+  function snapshotEvent(pgId,state,reason,protect){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),reason:reason||"Snapshot Narratore",protected:!!protect,state:state||{},sizeBytes:JSON.stringify(state||{}).length,schemaVersion:25}; }
 
   window.fbSetAccredito = function(collectionName, pgId, meseId, valore){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve(false); }
@@ -324,7 +324,7 @@
   window.fbRestoreSnapshot = function(collectionName,pgId,snapshotState,snapshotLabel){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){return Promise.resolve(false);}
     var pgRef=doc(fbDb,collectionName,pgId), preRef=doc(collection(fbDb,collectionName,pgId,"snapshots")), auditRef=doc(collection(fbDb,collectionName,pgId,"audit"));
-    return runTransaction(fbDb,async function(tx){var curSnap=await tx.get(pgRef);if(!curSnap.exists())throw new Error("missing-pg");var cur=curSnap.data();tx.set(preRef,snapshotEvent(pgId,cur,"Backup automatico prima del ripristino",true));var next=JSON.parse(JSON.stringify(snapshotState||{}));next._pgName=pgId;next._schemaVersion=Math.max(23,parseInt(cur._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(cur._dbRevision,10)||0)+1;next._archiviato=!!cur._archiviato;if(Object.prototype.hasOwnProperty.call(cur,"_archiveUnlockUntil")){next._archiveUnlockUntil=cur._archiveUnlockUntil;}next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";tx.set(pgRef,next);tx.set(auditRef,narratorEvent(pgId,"Ripristino","Ripristinata versione: "+(snapshotLabel||"snapshot"),[]));}).then(function(){return true;}).catch(function(e){console.error(e);return false;});
+    return runTransaction(fbDb,async function(tx){var curSnap=await tx.get(pgRef);if(!curSnap.exists())throw new Error("missing-pg");var cur=curSnap.data();tx.set(preRef,snapshotEvent(pgId,cur,"Backup automatico prima del ripristino",true));var next=JSON.parse(JSON.stringify(snapshotState||{}));next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(cur._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(cur._dbRevision,10)||0)+1;next._archiviato=!!cur._archiviato;if(Object.prototype.hasOwnProperty.call(cur,"_archiveUnlockUntil")){next._archiveUnlockUntil=cur._archiveUnlockUntil;}next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";tx.set(pgRef,next);tx.set(auditRef,narratorEvent(pgId,"Ripristino","Ripristinata versione: "+(snapshotLabel||"snapshot"),[]));}).then(function(){return true;}).catch(function(e){console.error(e);return false;});
   };
 
   window.fbReplacePgAndAccrediti = function(personCollection, accreditiCollection, pgId, expectedData, expectedAcc, dataObj, accObj){
@@ -334,7 +334,7 @@
       var pgSnap=await tx.get(pgRef); var accSnap=await tx.get(accRef); if(!pgSnap.exists())throw new Error("missing-pg");
       var curData=pgSnap.data(),curAcc=accSnap.exists()?accSnap.data():{};if(stableJson(curData)!==stableJson(expectedData||{})||stableJson(curAcc)!==stableJson(expectedAcc||{}))throw new Error("stale-data");
       tx.set(snapRef,snapshotEvent(pgId,curData,"Backup automatico prima della pulizia periodica",false));
-      var next=Object.assign({},dataObj||{});next._pgName=pgId;next._schemaVersion=Math.max(23,parseInt(curData._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(curData._dbRevision,10)||0)+1;next._archiviato=!!curData._archiviato;if(Object.prototype.hasOwnProperty.call(curData,"_archiveUnlockUntil"))next._archiveUnlockUntil=curData._archiveUnlockUntil;next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";
+      var next=Object.assign({},dataObj||{});next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(curData._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(curData._dbRevision,10)||0)+1;next._archiviato=!!curData._archiviato;if(Object.prototype.hasOwnProperty.call(curData,"_archiveUnlockUntil"))next._archiveUnlockUntil=curData._archiveUnlockUntil;next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";
       var nextAcc=Object.assign({},accObj||{});nextAcc._lastModifiedAt=serverTimestamp();nextAcc._lastModifiedBy="narratore";nextAcc._lastAction="Pulizia periodica archivio";
       tx.set(pgRef,next);tx.set(accRef,nextAcc);tx.set(auditRef,narratorEvent(pgId,"Archivio","Pulizia periodica del database completata",[]));
     }).then(function(){return true;}).catch(function(e){console.error(e);return false;});
@@ -353,6 +353,13 @@
 </script>
 
 <script>
+  /* Copia locale per lo script classico: le funzioni dichiarate nello script type=module non sono globali. */
+  function stableValue(v){
+    if(Array.isArray(v)){ return v.map(stableValue); }
+    if(v && typeof v === "object"){ var o={}; Object.keys(v).sort().forEach(function(k){o[k]=stableValue(v[k]);}); return o; }
+    return v;
+  }
+  function stableJson(v){ return JSON.stringify(stableValue(v == null ? {} : v)); }
 (function(){
   "use strict";
 
@@ -769,11 +776,11 @@
       if(tipo==="adulto"){(data.SERRE||[]).forEach(function(x){fp+=(x.PIANTE||[]).length+(x.ARCHIVIO_PIANTE||[]).length;});(data.RISERVE||[]).forEach(function(x){fc+=(x.CREATURE||[]).length+(x.ARCHIVIO_CREATURE||[]).length;});(data.LABORATORI||[]).forEach(function(x){fpo+=(x.POSTAZIONI||[]).length+(x.ARCHIVIO_POSTAZIONI||[]).length;});}
       else{fp=(data.PIANTE||[]).length+(data.ARCHIVIO_PIANTE||[]).length;fc=(data.CREATURE||[]).length+(data.ARCHIVIO_CREATURE||[]).length;fpo=(data.CALDERONI||[]).length+(data.ARCHIVIO_CALDERONI||[]).length;}
       out.push("Mesi conservati: "+fm.length+" | Pozioni: "+fpo+" | Piante: "+fp+" | Creature: "+fc+" | Ingredienti posseduti: "+((data.DISPENSA&&data.DISPENSA.ingredienti)||[]).length);
-      for(var fi=0;fi<fm.length;fi++){var fps=fm[fi].posts||[];out.push("• "+cleanText(fm[fi].nome)+" — "+fps.length+" post — "+totaleG(tipo,fps)+" G — "+totalePP(fps,fm[fi])+" PP");}
+      for(var fi=0;fi<fm.length;fi++){var fps=fm[fi].posts||[];out.push("• "+cleanText(fm[fi].nome)+" — "+validPostCount(fps)+" post — "+totaleG(tipo,fps)+" G — "+totalePP(fps,fm[fi])+" PP");}
       out.push(""); out.push("Tutto il contenuto, comprese strutture, cicli, link, Dispensa e storico, è conservato integralmente nel backup tecnico in fondo.");
     }
     else{
-      if(cand.mesi.length){out.push("[b]CAMERA BLINDATA / MESI ACCREDITATI[/b]");cand.mesi.forEach(function(m){var ps=m.posts||[], tipoPg=tipo;out.push("• "+cleanText(m.nome)+" — "+ps.length+" post — "+totaleG(tipoPg,ps)+" G — "+totalePP(ps,m)+" PP");});out.push("");}
+      if(cand.mesi.length){out.push("[b]CAMERA BLINDATA / MESI ACCREDITATI[/b]");cand.mesi.forEach(function(m){var ps=m.posts||[], tipoPg=tipo;out.push("• "+cleanText(m.nome)+" — "+validPostCount(ps)+" post — "+totaleG(tipoPg,ps)+" G — "+totalePP(ps,m)+" PP");});out.push("");}
       if(cand.pozioni.length){out.push("[b]POZIONI ARCHIVIATE[/b]");cand.pozioni.forEach(function(x){var z=x.data||{};out.push("• "+cleanText(z.nomePozione||("Postazione n°"+z.numero))+" — "+cleanText(z.classificazione)+" — "+cleanText(x.struttura)+(z.dataLink?" — "+bbLink(z.dataLink,"role"):""));});out.push("");}
       if(cand.piante.length){out.push("[b]PIANTE ARCHIVIATE[/b]");cand.piante.forEach(function(x){var z=x.data||{};out.push("• "+cleanText(z.nome||"Pianta")+" — "+cleanText(z.classificazione)+" — "+cleanText(x.struttura)+(z.dataLink?" — "+bbLink(z.dataLink,"ritrovamento"):""));});out.push("");}
       if(cand.creature.length){out.push("[b]CREATURE ARCHIVIATE[/b]");cand.creature.forEach(function(x){var z=x.data||{};out.push("• "+cleanText(z.nome||"Creatura")+" — "+cleanText(z.classificazione)+" — "+cleanText(x.struttura)+(z.dataLink?" — "+bbLink(z.dataLink,"ritrovamento/domesticazione"):""));});out.push("");}
@@ -796,7 +803,7 @@
     if(d.DISPENSA){accumulateDispensaArchiveTotals(d.DISPENSA,cand.movimenti);var movIds={};cand.movimenti.forEach(function(m){movIds[String(m.id)]=true;});d.DISPENSA.movimenti=(d.DISPENSA.movimenti||[]).filter(function(m){return !movIds[String(m.id)];});}
     if(!d.ARCHIVIO_DB){d.ARCHIVIO_DB={periodiche:[],ultima:null};} if(!Array.isArray(d.ARCHIVIO_DB.periodiche)){d.ARCHIVIO_DB.periodiche=[];}
     var maxPost=0;cand.mesi.forEach(function(m){(m.posts||[]).forEach(function(p){maxPost=Math.max(maxPost,parseInt(p.globalNo,10)||0);});});
-    var rec={data:new Date().toISOString(),finoAlPostGlobale:maxPost,mesi:cand.mesi.length,pozioni:cand.pozioni.length,piante:cand.piante.length,creature:cand.creature.length,movimentiDispensa:cand.movimenti.length};d._schemaVersion=23;d.ARCHIVIO_DB.ultima=rec;d.ARCHIVIO_DB.periodiche.push(rec);if(d.ARCHIVIO_DB.periodiche.length>20){d.ARCHIVIO_DB.periodiche=d.ARCHIVIO_DB.periodiche.slice(-20);}return d;
+    var rec={data:new Date().toISOString(),finoAlPostGlobale:maxPost,mesi:cand.mesi.length,pozioni:cand.pozioni.length,piante:cand.piante.length,creature:cand.creature.length,movimentiDispensa:cand.movimenti.length};d._schemaVersion=25;d.ARCHIVIO_DB.ultima=rec;d.ARCHIVIO_DB.periodiche.push(rec);if(d.ARCHIVIO_DB.periodiche.length>20){d.ARCHIVIO_DB.periodiche=d.ARCHIVIO_DB.periodiche.slice(-20);}return d;
   }
   function appendPeriodicArchiveTools(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente", data=pgEntry.data||{}, wrap=el("details","db-archive-tools");wrap.appendChild(el("summary",null,"🗄 Archivio periodico e pulizia database"));
