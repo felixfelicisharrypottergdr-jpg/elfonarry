@@ -145,7 +145,6 @@
     background-size:100% 100%, 100% auto !important;
     background-position:center top, center top !important;
     background-attachment:scroll, scroll !important;
-    min-height:100vh;
   }
 
 </style>
@@ -1249,8 +1248,17 @@
 
   renderApp();
 
-  function notifyParentHeight(){if(window.parent===window){return;}var h=Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0);try{window.parent.postMessage({tipo:"felix-tool-height",tool:"narratore",height:h},"*");}catch(e){}}
-  if(typeof ResizeObserver!=="undefined"){new ResizeObserver(function(){notifyParentHeight();}).observe(document.documentElement);}window.addEventListener("load",notifyParentHeight);
+  function notifyParentHeight(){
+    if(window.parent===window){return;}
+    var wrap=document.querySelector(".wrap");
+    var h=wrap ? Math.ceil(wrap.getBoundingClientRect().bottom + window.scrollY) : Math.ceil(document.body ? document.body.offsetHeight : 0);
+    h=Math.max(1,h);
+    try{window.parent.postMessage({tipo:"felix-tool-height",tool:"narratore",height:h},"*");}catch(e){}
+  }
+  if(typeof ResizeObserver!=="undefined"){
+    var heightTarget=document.querySelector(".wrap")||document.documentElement;
+    new ResizeObserver(function(){notifyParentHeight();}).observe(heightTarget);
+  }window.addEventListener("load",notifyParentHeight);
 
 })();
 </script>
