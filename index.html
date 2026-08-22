@@ -214,6 +214,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v68 - PP legacy dei singoli post ignorati; valgono solo i Bonus correnti */
   /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
   /* v64 - riepilogo mensile: Oggetti / Bonus usati e aggiornamenti Bagaglio */
   /* v63 - utilizzi iniziali obbligatori per Bonus a consumo */
@@ -713,7 +714,8 @@
     var tot=0,bonuses=narratorAllBonuses(mese);
     for(var i=0;i<posts.length;i++){
       var post=posts[i];if(!post||!isValidPostLink(post.link))continue;
-      var v=parseInt(post.pp!=null?post.pp:0,10);if(!isNaN(v)&&v>0)tot+=v;
+      /* post.pp appartiene al vecchio sistema Bonus ed è ignorato.
+         I PP validi arrivano esclusivamente dai Bonus generici correnti. */
       for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b]);
     }
     for(var k=0;k<bonuses.length;k++)if(bonuses[k].modalita==="manual")tot+=bonuses[k].utilizziManuali*bonuses[k].pp;
