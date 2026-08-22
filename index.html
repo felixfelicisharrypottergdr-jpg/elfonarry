@@ -33,22 +33,24 @@
   .panel h4{ color: var(--green-dark); margin-top:24px; margin-bottom:10px; }
   .guide-text{
     background: rgba(212,175,55,.15); border-left: 4px solid var(--gold);
-    padding: 10px 14px; margin: 16px 0; font-size: .93rem;
+    padding: 12px 18px; margin: 20px 0 24px; font-size: .93rem; line-height:1.45;
   }
   .divider{
     height:1px;
-    margin:18px 0;
+    margin:20px 0 22px;
     background:transparent;
   }
   .dashboard-actions{
     display:flex;
     flex-wrap:wrap;
-    gap:10px;
-    margin:10px 0 18px;
+    gap:12px;
+    margin:14px 0 24px;
   }
   .dashboard-actions button{ margin:0; }
-  .dashboard-search{ margin:18px 0 24px; }
-  .dashboard-search label{ margin-top:0; }
+  .dashboard-search{ margin:24px 0 28px; padding:14px 18px; }
+  .dashboard-search .dashboard-search-field{ max-width:380px; margin-top:12px; }
+  .dashboard-search .dashboard-search-field label{ margin:0 0 8px; }
+  .dashboard-search .dashboard-search-field input{ margin-top:0 !important; }
   label{ display:block; font-size: .78rem; font-weight: bold; color: var(--green-dark); margin-bottom: 3px; margin-top: 10px; }
   input[type=text], input[type=email], input[type=password], input[type=number], input[type=search]{
     width:100%; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 5px;
@@ -178,8 +180,9 @@
   .link-open-icon:hover{ background:#333; }
 
 
-  .db-health{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0 14px;}
-  .db-health>div{border:1px solid var(--gold);border-radius:6px;padding:12px;background:rgba(255,255,255,.45);}
+  .db-health{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0 18px;}
+  .db-health>div{border:1px solid var(--gold);border-radius:6px;padding:14px 12px;background:rgba(255,255,255,.45);}
+  .panel .small-note{ margin:16px 0 18px; line-height:1.45; }
   .db-size-warn{color:#a45d15;font-weight:bold}.db-size-danger{color:#8b1e1e;font-weight:bold}
 
   .history-tools{margin-top:12px;border:1px solid rgba(201,167,92,.55);border-radius:8px;padding:8px;background:rgba(20,20,20,.06)}
@@ -997,14 +1000,16 @@
     var health=el("div","db-health");health.appendChild(el("div",null,"PG nel database<br><b>"+allPg.length+"</b>"));health.appendChild(el("div",null,"Dati PG stimati<br><b>"+sizeLabel(totalBytes)+"</b>"));var hc=el("div",maxBytes>850000?"db-size-danger":(maxBytes>650000?"db-size-warn":""),"PG più pesante<br><b>"+(maxPg||"—")+" · "+firestoreDocUsage(maxBytes)+"</b>");health.appendChild(hc);p.appendChild(health);p.appendChild(el("p","small-note","La stima «Dati PG» riguarda i documenti principali dei Personaggi. Registro modifiche, snapshot e accrediti sono documenti Firebase separati e non rientrano in questo totale."));if(maxBytes>650000){p.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ Conviene effettuare una pulizia periodica del PG più pesante prima che il singolo documento si avvicini al limite Firestore."));}
 
     var searchBox=el("div","guide-text dashboard-search");
-    var searchLabel=el("label",null,"Cerca PG");
+    searchBox.appendChild(el("div",null,"<b>Cerca PG</b>"));
+    var searchField=el("div","dashboard-search-field");
+    var searchLabel=el("label",null,"Scrivi nome o cognome");
     var searchInput=el("input");
     searchInput.type="search";
     searchInput.placeholder="Scrivi nome o cognome…";
     searchInput.value=filtroPg;
-    searchInput.style.marginTop="8px";
-    searchLabel.appendChild(searchInput);
-    searchBox.appendChild(searchLabel);
+    searchField.appendChild(searchLabel);
+    searchField.appendChild(searchInput);
+    searchBox.appendChild(searchField);
     p.appendChild(searchBox);
     var matchPg=function(x){var q=String(filtroPg||"").trim().toLowerCase();return !q||String(x.id||"").toLowerCase().indexOf(q)>=0;};
     var adultiAttiviAll=datiAdulti.filter(function(x){return !x.data._archiviato;}), studentiAttiviAll=datiStudenti.filter(function(x){return !x.data._archiviato;}), adultiArchAll=datiAdulti.filter(function(x){return !!x.data._archiviato;}), studentiArchAll=datiStudenti.filter(function(x){return !!x.data._archiviato;});
