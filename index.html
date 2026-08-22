@@ -109,6 +109,28 @@
     font-weight:bold;
     font-size:.78rem;
   }
+
+  .bag-update-warning{
+    margin:6px 0;
+    padding:6px 9px;
+    border:1px solid #d88b18;
+    border-radius:6px;
+    background:#fff0cf;
+    color:#8a4c00;
+    font-weight:bold;
+    font-size:.78rem;
+  }
+  .bag-remove-warning{
+    margin:6px 0;
+    padding:6px 9px;
+    border:1px solid #9b2f2a;
+    border-radius:6px;
+    background:#f8dfda;
+    color:#8f211d;
+    font-weight:bold;
+    text-decoration:underline;
+    font-size:.78rem;
+  }
   .small-note{ font-size:.76rem; color:#5a4a30; font-style:italic; margin-top:4px; }
   select{ width:100%; padding:7px 8px; border:1px solid var(--gold); border-radius:5px; background:#fffdf5; font-family:inherit; font-size:.9rem; }
   .summary-code{ font-family:system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif; font-size:.8rem; background:#efe4c4; border:1px dashed var(--gold); border-radius:5px; padding:12px; white-space:pre-wrap; margin-top:10px; }
@@ -151,6 +173,9 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v64 - riepilogo mensile: Oggetti / Bonus usati e aggiornamenti Bagaglio */
+  /* v63 - utilizzi iniziali obbligatori per Bonus a consumo */
+  /* v61 - bonus a utilizzi/variabili + avvisi Bagaglio */
   /* v56 - riepilogo accredito include perdite Parametri Sociali */
   /* v55 - accrediti Evento PP/Galeoni/Altro + evidenza Da accreditare */
   /* v54 - sfondo Narratore; indipendente dall'altezza dinamica della pagina */
@@ -525,28 +550,154 @@
   function meseBonusPP(mese){var v=parseInt(mese&&mese.eventoBonusPP!=null?mese.eventoBonusPP:0,10);return (!isNaN(v)&&v>0)?v:0;}
   function meseBonusGaleoni(mese){var v=parseInt(mese&&mese.eventoBonusGaleoni!=null?mese.eventoBonusGaleoni:0,10);return (!isNaN(v)&&v>0)?v:0;}
   function meseBonusAltro(mese){return String(mese&&mese.eventoBonusAltro!=null?mese.eventoBonusAltro:"").trim();}
-  function postEligibleForEventBonus(post){return !!(post&&isValidPostLink(post.link)&&!post.eventoBonusEscluso);}
-  function bonusEventPostCount(posts){var c=0;posts=Array.isArray(posts)?posts:[];for(var i=0;i<posts.length;i++){if(postEligibleForEventBonus(posts[i]))c++;}return c;}
-  function totaleG(tipo, posts, mese){
-    var count = 0;
-    for(var i=0;i<posts.length;i++){ if(posts[i] && isValidPostLink(posts[i].link)){ count++; } }
-    var tot = 0; for(var p=1;p<=count;p++){ tot += valoreG(tipo,p); }
-    tot += bonusEventPostCount(posts)*meseBonusGaleoni(mese);
-    return tot;
+  function normBonusMode(v){return ["all","posts","manual"].indexOf(v)>=0?v:"all";}
+  function normBonusValue(v){return ["fixed","variable"].indexOf(v)>=0?v:"fixed";}
+  function normBonusTarget(v){return ["pp","galeoni","altro"].indexOf(v)>=0?v:"pp";}
+
+  function narratorAllBonuses(mese){
+    var out=[{
+      id:"__primary__",primary:true,descrizione:String(mese&&mese.eventoBonusDescrizione||""),
+      pp:meseBonusPP(mese),galeoni:meseBonusGaleoni(mese),altro:meseBonusAltro(mese),
+      modalita:normBonusMode(mese&&mese.eventoBonusModalita),valore:normBonusValue(mese&&mese.eventoBonusValore),
+      maxUtilizzi:Math.max(0,parseInt(mese&&mese.eventoBonusMaxUtilizzi,10)||0),
+      usatiIniziali:Math.max(0,parseInt(mese&&mese.eventoBonusUsatiIniziali,10)||0),
+      usatiConfermati:mese&&mese.eventoBonusUsatiConfermati===true,
+      variabileSu:normBonusTarget(mese&&mese.eventoBonusVariabileSu),
+      utilizziManuali:Math.max(0,parseInt(mese&&mese.eventoBonusUtilizziManuali,10)||0)
+    }];
+    var ex=Array.isArray(mese&&mese.bonusAggiuntivi)?mese.bonusAggiuntivi:[];
+    for(var i=0;i<ex.length;i++){
+      var b=ex[i]||{};
+      out.push({
+        id:String(b.id||("bonus_"+i)),primary:false,descrizione:String(b.descrizione||""),
+        pp:Math.max(0,parseInt(b.pp,10)||0),galeoni:Math.max(0,parseInt(b.galeoni,10)||0),altro:String(b.altro||"").trim(),
+        modalita:normBonusMode(b.modalita),valore:normBonusValue(b.valore),
+        maxUtilizzi:Math.max(0,parseInt(b.maxUtilizzi,10)||0),usatiIniziali:Math.max(0,parseInt(b.usatiIniziali,10)||0),
+        usatiConfermati:b.usatiConfermati===true,
+        variabileSu:normBonusTarget(b.variabileSu),utilizziManuali:Math.max(0,parseInt(b.utilizziManuali,10)||0)
+      });
+    }
+    var active=[];
+    for(var j=0;j<out.length;j++){
+      var x=out[j];
+      if(String(x.descrizione||"").trim()!==""||x.pp>0||x.galeoni>0||x.altro!==""||x.modalita!=="all"||x.maxUtilizzi>0)active.push(x);
+    }
+    return active;
   }
-  function totalePP(posts,mese){
-    var tot = 0, bonus=meseBonusPP(mese);
-    for(var i=0;i<posts.length;i++){
-      var post = posts[i];
-      if(!post || !isValidPostLink(post.link)){ continue; }
-      var v = parseInt(post.pp != null ? post.pp : 0, 10);
-      if(!isNaN(v) && v > 0){ tot += v; }
-      if(!post.eventoBonusEscluso){ tot += bonus; }
+  function narratorBonusName(b,idx){var d=String(b&&b.descrizione||"").trim();return d||("Bonus "+(idx+1));}
+  function narratorPostExcluded(post,b){
+    if(!post||!b)return false;
+    if(b.primary)return !!post.eventoBonusEscluso;
+    return !!(post.bonusEsclusi&&post.bonusEsclusi[b.id]);
+  }
+  function narratorUsageRecord(post,b){
+    if(!post||!post.bonusUtilizzi||typeof post.bonusUtilizzi!=="object")return null;
+    var r=post.bonusUtilizzi[String(b.id)];
+    return r&&typeof r==="object"?r:null;
+  }
+  function narratorPostUses(post,b){
+    var r=narratorUsageRecord(post,b);
+    return !!(r&&r.used&&isValidPostLink(post&&post.link));
+  }
+  function narratorPostEligible(post,b){
+    if(!post||!isValidPostLink(post.link))return false;
+    if(b.modalita==="all")return !narratorPostExcluded(post,b);
+    if(b.modalita==="posts")return narratorPostUses(post,b);
+    return false;
+  }
+  function narratorBonusCount(posts,b){
+    if(b.modalita==="manual")return Math.max(0,parseInt(b.utilizziManuali,10)||0);
+    var c=0;posts=Array.isArray(posts)?posts:[];
+    for(var i=0;i<posts.length;i++)if(narratorPostEligible(posts[i],b))c++;
+    return c;
+  }
+  function narratorBonusCurrentUses(posts,b){return Math.max(0,parseInt(b.usatiIniziali,10)||0)+narratorBonusCount(posts,b);}
+  function narratorBonusPPOnPost(post,b){
+    if(!narratorPostEligible(post,b))return 0;
+    if(b.modalita==="posts"&&b.valore==="variable"){
+      var r=narratorUsageRecord(post,b);
+      return b.variabileSu==="pp"&&r?Math.max(0,parseInt(r.pp,10)||0):0;
+    }
+    return b.pp;
+  }
+  function narratorBonusGOnPost(post,b){
+    if(!narratorPostEligible(post,b))return 0;
+    if(b.modalita==="posts"&&b.valore==="variable"){
+      var r=narratorUsageRecord(post,b);
+      return b.variabileSu==="galeoni"&&r?Math.max(0,parseInt(r.galeoni,10)||0):0;
+    }
+    return b.galeoni;
+  }
+  function narratorBonusAltroOnPost(post,b){
+    if(!narratorPostEligible(post,b))return "";
+    if(b.modalita==="posts"&&b.valore==="variable"){
+      var r=narratorUsageRecord(post,b);
+      return b.variabileSu==="altro"&&r?String(r.altro||"").trim():"";
+    }
+    return String(b.altro||"").trim();
+  }
+  function totaleG(tipo,posts,mese){
+    var count=0;for(var i=0;i<posts.length;i++)if(posts[i]&&isValidPostLink(posts[i].link))count++;
+    var tot=0;for(var p=1;p<=count;p++)tot+=valoreG(tipo,p);
+    var bonuses=narratorAllBonuses(mese);
+    for(var b=0;b<bonuses.length;b++){
+      for(var j=0;j<posts.length;j++)tot+=narratorBonusGOnPost(posts[j],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
     }
     return tot;
   }
-  function totaleBonusEvento(posts,mese){return bonusEventPostCount(posts)*meseBonusPP(mese);}
-  function totaleBonusEventoGaleoni(posts,mese){return bonusEventPostCount(posts)*meseBonusGaleoni(mese);}
+  function totalePP(posts,mese){
+    var tot=0,bonuses=narratorAllBonuses(mese);
+    for(var i=0;i<posts.length;i++){
+      var post=posts[i];if(!post||!isValidPostLink(post.link))continue;
+      var v=parseInt(post.pp!=null?post.pp:0,10);if(!isNaN(v)&&v>0)tot+=v;
+      for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b]);
+    }
+    for(var k=0;k<bonuses.length;k++)if(bonuses[k].modalita==="manual")tot+=bonuses[k].utilizziManuali*bonuses[k].pp;
+    return tot;
+  }
+  function totaleBonusEvento(posts,mese){
+    var bonuses=narratorAllBonuses(mese),tot=0;
+    for(var b=0;b<bonuses.length;b++){
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusPPOnPost(posts[i],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].pp;
+    }
+    return tot;
+  }
+  function totaleBonusEventoGaleoni(posts,mese){
+    var bonuses=narratorAllBonuses(mese),tot=0;
+    for(var b=0;b<bonuses.length;b++){
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusGOnPost(posts[i],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
+    }
+    return tot;
+  }
+  function allBonusAltro(mese,posts){
+    var bonuses=narratorAllBonuses(mese),out=[];
+    for(var b=0;b<bonuses.length;b++){
+      if(bonuses[b].modalita==="manual"&&bonuses[b].utilizziManuali>0&&bonuses[b].altro)out.push(narratorBonusName(bonuses[b],b)+": "+bonuses[b].altro);
+      for(var i=0;i<(posts||[]).length;i++){
+        var a=narratorBonusAltroOnPost(posts[i],bonuses[b]);if(a)out.push(a);
+      }
+    }
+    return out.join(", ");
+  }
+  function narratorBagWarnings(mese,posts){
+    var bonuses=narratorAllBonuses(mese),out=[];
+    for(var i=0;i<bonuses.length;i++){
+      var b=bonuses[i];
+      if((b.modalita!=="posts"&&b.modalita!=="manual")||!(b.maxUtilizzi>0))continue;
+      var used=narratorBonusCount(posts,b);
+      if(used<=0)continue;
+      var current=b.usatiIniziali+used;
+      if(current>=b.maxUtilizzi){
+        out.push({kind:"remove",text:narratorBonusName(b,i)+": "+current+"/"+b.maxUtilizzi+" — RIMUOVERE DAL BAGAGLIO IN SCHEDA PG."});
+      }else{
+        out.push({kind:"update",text:narratorBonusName(b,i)+": aggiornare gli utilizzi nel Bagaglio da "+b.usatiIniziali+"/"+b.maxUtilizzi+" a "+current+"/"+b.maxUtilizzi+"."});
+      }
+    }
+    return out;
+  }
   function validPostCount(posts){var c=0;posts=Array.isArray(posts)?posts:[];for(var i=0;i<posts.length;i++){if(posts[i]&&isValidPostLink(posts[i].link))c++;}return c;}
   function normalizeMonthName(nome){
     return String(nome || "").trim().replace(/\s+/g," ").toLocaleLowerCase("it-IT");
@@ -843,7 +994,7 @@
 
     var dSel=el("div");dSel.appendChild(el("label",null,"Mese del riepilogo"));var sel=el("select");for(var mi=0;mi<monthNames.length;mi++){var o=el("option",null,monthNames[mi]);o.value=monthNames[mi];if(monthNames[mi]===meseRiepilogoSelezionato)o.selected=true;sel.appendChild(o);}sel.addEventListener("change",function(){meseRiepilogoSelezionato=sel.value;renderRiepilogoMensile(container);});dSel.appendChild(sel);container.appendChild(dSel);
 
-    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[];
+    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],bagLines=[],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[];
     for(var j=0;j<entries.length;j++){
       var entry=entries[j],mesiPg=entry.pg.data.MESI||[],matches=[];
       for(var mm=0;mm<mesiPg.length;mm++){if(isImportedStudentMonth(mesiPg[mm]))continue;var mn=normalizeMonthName(mesiPg[mm].nome);if(mn&&mn===selectedMonthNorm)matches.push(mesiPg[mm]);}
@@ -851,6 +1002,15 @@
       var mese=matches.length===1?matches[0]:null,cache=accreditiCache[entry.coll+"__"+entry.pg.id]||{},record=findAppliedRecordForMonth(cache,mese,selectedMonthNorm);
       var accredited=mese?(!!cache[mese.id]||!!record):!!record;
       if(!accredited){notProcessed.push(entry.pg.id);continue;}
+
+      if(mese){
+        var postsBag=Array.isArray(mese.posts)?mese.posts:[];
+        var pgBagWarnings=narratorBagWarnings(mese,postsBag);
+        for(var pbw=0;pbw<pgBagWarnings.length;pbw++){
+          bagLines.push("<b>"+entry.pg.id+":</b> "+pgBagWarnings[pbw].text);
+        }
+      }
+
       if(record){lines.push(registryLineFromRecord(entry.pg.id,record));count++;continue;}
       if(!mese)continue;
       var posts=Array.isArray(mese.posts)?mese.posts:[],g=totaleG(entry.tipo,posts,mese),pp=totalePP(posts,mese),riga="<b>"+entry.pg.id+":</b> +"+g+" Galeoni";if(pp>0)riga+=", +"+pp+" PP";riga+=" <i>(accredito precedente al calcolatore Staff)</i>";lines.push(riga);count++;
@@ -858,6 +1018,15 @@
     if(ambiguousPg.length)container.appendChild(el("div","warning-alert","⚠ Esclusi dal riepilogo perché hanno più Mesi chiamati «"+meseRiepilogoSelezionato+"»: <b>"+ambiguousPg.join(", ")+"</b>. Rinomina una delle vecchie voci nel relativo Tracker e poi aggiorna il pannello."));
     if(notProcessed.length)container.appendChild(el("p","small-note","Non ancora processati per "+meseRiepilogoSelezionato+": "+notProcessed.join(", ")+". I PG senza CB possono essere registrati come 0 post dalla sezione «Valori correnti da Scheda PG»."));
     if(count===0){container.appendChild(el("p","small-note","Nessun PG risulta ancora accreditato senza ambiguità per "+meseRiepilogoSelezionato+"."));return;}
+
+    lines.push("");
+    lines.push("<b>Oggetti / Bonus usati — aggiornamenti Scheda PG:</b>");
+    if(bagLines.length){
+      for(var bli=0;bli<bagLines.length;bli++){lines.push(bagLines[bli]);}
+    }else{
+      lines.push("Nessun Bonus a utilizzi da aggiornare o rimuovere dal Bagaglio.");
+    }
+
     var code=el("div","summary-code");code.id="riepilogo-copy-text";code.textContent=lines.join("\n");container.appendChild(code);var btn=el("button","copy-btn","Copia riepilogo del mese");btn.addEventListener("click",function(){copyText(code.textContent,btn);});container.appendChild(btn);
   }
 
@@ -1194,26 +1363,70 @@
           var gMese = totaleG(tipoPg, postsMese, mese);
           var ppMese = totalePP(postsMese,mese);
           info.appendChild(el("div", "mese-title", nomeLbl + " \u2014 " + postValidiMese + " post \u2014 " + gMese + " G \u2014 " + ppMese + " PP"));
-          var eventBonus=meseBonusPP(mese), eventBonusG=meseBonusGaleoni(mese), eventAltro=meseBonusAltro(mese), eventDesc=String(mese.eventoBonusDescrizione||"").trim();
-          if(eventBonus>0 || eventBonusG>0 || eventAltro || eventDesc){
-            var eventLine=el("div","cb-notes");
-            eventLine.appendChild(el("span","cb-notes-title","Bonus del mese: "));
-            var bonusCount=bonusEventPostCount(postsMese),eventParts=[];
-            if(eventBonus>0){eventParts.push("+"+eventBonus+" PP/post · +"+totaleBonusEvento(postsMese,mese)+" PP totali");}
-            if(eventBonusG>0){eventParts.push("+"+eventBonusG+" G/post · +"+totaleBonusEventoGaleoni(postsMese,mese)+" G totali");}
-            if(eventAltro){eventParts.push("Altro: "+eventAltro);}
-            if(!eventParts.length){eventParts.push("nessun premio automatico");}
-            eventLine.appendChild(document.createTextNode((eventDesc?eventDesc+" — ":"")+eventParts.join(" · ")+" · "+bonusCount+"/"+postValidiMese+" post con bonus"));
+          var monthBonuses=narratorAllBonuses(mese);
+          for(var mbi=0;mbi<monthBonuses.length;mbi++){
+            var mb=monthBonuses[mbi],eventLine=el("div","cb-notes"),bonusCount=narratorBonusCount(postsMese,mb),eventParts=[];
+            eventLine.appendChild(el("span","cb-notes-title","Bonus: "));
+            if(mb.modalita==="posts"&&mb.valore==="variable"){
+              var sumPP=0,sumG=0;
+              for(var _mbp=0;_mbp<postsMese.length;_mbp++){sumPP+=narratorBonusPPOnPost(postsMese[_mbp],mb);sumG+=narratorBonusGOnPost(postsMese[_mbp],mb);}
+              eventParts.push("variabile per post su "+(mb.variabileSu==="pp"?"PP":(mb.variabileSu==="galeoni"?"Galeoni":"Altro")));
+              if(sumPP>0)eventParts.push("+"+sumPP+" PP totali");
+              if(sumG>0)eventParts.push("+"+sumG+" G totali");
+            }else{
+              if(mb.pp>0)eventParts.push("+"+mb.pp+" PP/"+(mb.modalita==="all"?"post":"utilizzo"));
+              if(mb.galeoni>0)eventParts.push("+"+mb.galeoni+" G/"+(mb.modalita==="all"?"post":"utilizzo"));
+              if(mb.altro)eventParts.push("Altro: "+mb.altro);
+            }
+            if(!eventParts.length)eventParts.push("nessun valore economico");
+            if(mb.modalita==="all")eventParts.push(bonusCount+"/"+postValidiMese+" post con bonus");
+            else if(mb.maxUtilizzi>0)eventParts.push("utilizzi "+narratorBonusCurrentUses(postsMese,mb)+"/"+mb.maxUtilizzi);
+            else eventParts.push("utilizzi "+bonusCount);
+            eventLine.appendChild(document.createTextNode(narratorBonusName(mb,mbi)+" — "+eventParts.join(" · ")));
             info.appendChild(eventLine);
-            if((eventBonus>0 || eventBonusG>0 || eventAltro) && bonusCount<postValidiMese){
-              var excluded=el("div","cb-notes"); excluded.appendChild(el("span","cb-notes-title","Post esclusi dal Bonus:")); var anyExcluded=false;
-              for(var ebx=0;ebx<postsMese.length;ebx++){var ebp=postsMese[ebx];if(ebp&&isValidPostLink(ebp.link)&&ebp.eventoBonusEscluso){anyExcluded=true;var exItem=el("div","cb-note-item");exItem.appendChild(document.createTextNode("Post "+(ebx+1)));var exIcon=makeLinkIcon(ebp.link,"Apri il post escluso dal bonus");if(exIcon){exItem.appendChild(exIcon);}excluded.appendChild(exItem);}}
-              if(anyExcluded){info.appendChild(excluded);}
+
+            if(mb.modalita==="all"&&bonusCount<postValidiMese){
+              var excluded=el("div","cb-notes");
+              excluded.appendChild(el("span","cb-notes-title","Post esclusi da "+narratorBonusName(mb,mbi)+":"));
+              var anyExcluded=false;
+              for(var ebx=0;ebx<postsMese.length;ebx++){
+                var ebp=postsMese[ebx];
+                if(ebp&&isValidPostLink(ebp.link)&&narratorPostExcluded(ebp,mb)){
+                  anyExcluded=true;var exItem=el("div","cb-note-item");exItem.appendChild(document.createTextNode("Post "+(ebx+1)));
+                  var exIcon=makeLinkIcon(ebp.link,"Apri il post escluso dal bonus");if(exIcon)exItem.appendChild(exIcon);excluded.appendChild(exItem);
+                }
+              }
+              if(anyExcluded)info.appendChild(excluded);
+            }
+
+            if(mb.modalita==="posts"&&mb.valore==="variable"){
+              for(var vr=0;vr<postsMese.length;vr++){
+                var vp=postsMese[vr],rec=narratorUsageRecord(vp,mb);
+                if(!vp||!isValidPostLink(vp.link)||!rec||!rec.used)continue;
+                var rr=el("div","cb-note-item");
+                var res=mb.variabileSu==="pp"?("+"+(parseInt(rec.pp,10)||0)+" PP"):(mb.variabileSu==="galeoni"?("+"+(parseInt(rec.galeoni,10)||0)+" G"):String(rec.altro||""));
+                rr.appendChild(document.createTextNode("Post "+(vr+1)+": "+res+" "));
+                var rollIcon=makeLinkIcon(rec.link,"Apri il tiro del Bonus");if(rollIcon)rr.appendChild(rollIcon);
+                var missingRes=(mb.variabileSu==="pp"&&!((parseInt(rec.pp,10)||0)>0))||(mb.variabileSu==="galeoni"&&!((parseInt(rec.galeoni,10)||0)>0))||(mb.variabileSu==="altro"&&!String(rec.altro||"").trim());
+                if(missingRes||!isValidPostLink(rec.link)){rr.appendChild(el("span","status-pending"," ⚠ "+(missingRes?"risultato ":"")+(missingRes&&!isValidPostLink(rec.link)?"e ":"")+(!isValidPostLink(rec.link)?"link tiro ":"")+"mancante")); }
+                info.appendChild(rr);
+              }
             }
           }
 
+          for(var mbiSetup=0;mbiSetup<monthBonuses.length;mbiSetup++){
+            var setupBonus=monthBonuses[mbiSetup];
+            if(setupBonus.modalita==="posts" && (!setupBonus.usatiConfermati || !(setupBonus.maxUtilizzi>0))){
+              info.appendChild(el("div","bag-update-warning",narratorBonusName(setupBonus,mbiSetup)+": stato iniziale del premio incompleto — il PG deve indicare quanti utilizzi risultano già consumati in Scheda PG e il totale previsto."));
+            }
+          }
+          var bagWarnings=narratorBagWarnings(mese,postsMese);
+          for(var bwi=0;bwi<bagWarnings.length;bwi++){
+            info.appendChild(el("div",bagWarnings[bwi].kind==="remove"?"bag-remove-warning":"bag-update-warning",bagWarnings[bwi].text));
+          }
+
           var notes = el("div", "cb-notes");
-          notes.appendChild(el("span", "cb-notes-title", "Nota per la CB del mese:"));
+          notes.appendChild(el("span", "cb-notes-title", "Nota:"));
           var haNote = false;
           for(var n=0;n<postsMese.length;n++){
             var nota = postsMese[n] && postsMese[n].nota != null ? String(postsMese[n].nota).trim() : "";
@@ -1242,7 +1455,7 @@
             var statusLbl = el("span", box.checked ? "status-ok" : "status-pending", box.checked ? "Accreditato" : "Da accreditare");
             if(!box.checked){
               var dueParts=[gMese+" G",ppMese+" PP"];
-              var dueAltro=meseBonusAltro(mese);
+              var dueAltro=allBonusAltro(mese,postsMese);
               if(dueAltro){dueParts.push("Altro: "+dueAltro);}
               var currentStaffValues=(accreditiData._staffState&&accreditiData._staffState.values)||{};
               var dueSocial=socialLossPartsForSummary(tipoPg,validPostCount(postsMese),currentStaffValues);
