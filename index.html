@@ -137,6 +137,9 @@
   .staff-value-missing{color:#8a2f2f;font-weight:700}
   .staff-value-ok{color:#355b3a;font-weight:700}
 
+  /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
+  html, body{height:auto !important;min-height:0 !important;}
+
   /* v51 - sfondo indipendente dall'altezza dinamica della pagina */
   body{
     background-color:var(--green-dark) !important;
@@ -1248,17 +1251,39 @@
 
   renderApp();
 
-  function notifyParentHeight(){
-    if(window.parent===window){return;}
+  var ffLastSentHeight=0, ffHeightTimer=0;
+  function getFelixContentHeight(){
     var wrap=document.querySelector(".wrap");
-    var h=wrap ? Math.ceil(wrap.getBoundingClientRect().bottom + window.scrollY) : Math.ceil(document.body ? document.body.offsetHeight : 0);
-    h=Math.max(1,h);
-    try{window.parent.postMessage({tipo:"felix-tool-height",tool:"narratore",height:h},"*");}catch(e){}
+    if(wrap){var r=wrap.getBoundingClientRect();return Math.max(1,Math.ceil(r.bottom-Math.min(0,r.top)));}
+    return Math.max(1,Math.ceil(document.body?document.body.getBoundingClientRect().height:1));
+  }
+  function notifyParentHeight(force){
+    if(window.parent===window){return;}
+    var h=getFelixContentHeight();
+    if(!force&&Math.abs(h-ffLastSentHeight)<2){return;}
+    ffLastSentHeight=h;
+    try{window.parent.postMessage({tipo:"felix-tool-height",tool:"narratore",height:h,altezza:h},"*");}catch(e){}
+  }
+  function scheduleParentHeight(){
+    if(ffHeightTimer){clearTimeout(ffHeightTimer);}
+    ffHeightTimer=setTimeout(function(){notifyParentHeight(false);},40);
   }
   if(typeof ResizeObserver!=="undefined"){
-    var heightTarget=document.querySelector(".wrap")||document.documentElement;
-    new ResizeObserver(function(){notifyParentHeight();}).observe(heightTarget);
-  }window.addEventListener("load",notifyParentHeight);
+    new ResizeObserver(scheduleParentHeight).observe(document.querySelector(".wrap")||document.body||document.documentElement);
+  }
+  if(typeof MutationObserver!=="undefined"){
+    var mt=document.querySelector(".wrap")||document.body;
+    if(mt){new MutationObserver(scheduleParentHeight).observe(mt,{childList:true,subtree:true,attributes:true,characterData:true});}
+  }
+  window.addEventListener("resize",scheduleParentHeight);
+  window.addEventListener("message",function(event){
+    if(event.data&&event.data.tipo==="felix-tool-height-request"){notifyParentHeight(true);}
+  });
+  window.addEventListener("load",function(){
+    notifyParentHeight(true);
+    setTimeout(function(){notifyParentHeight(true);},120);
+    setTimeout(function(){notifyParentHeight(true);},500);
+  });
 
 })();
 </script>
