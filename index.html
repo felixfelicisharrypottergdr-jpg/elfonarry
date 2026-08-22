@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pannello Narratore</title>
+<title>Il Mio Elfo Domestico — Narratore</title>
 <style>
   :root{
     --parch:#e9e6dd; --parch-dark:#d4cfbd; --ink:#1c1c1c;
@@ -134,12 +134,23 @@
   .zero-month-row button{margin-bottom:0}
   .staff-value-missing{color:#8a2f2f;font-weight:700}
   .staff-value-ok{color:#355b3a;font-weight:700}
+
+  /* v49 - sfondo illustrato */
+  body{
+    background-image:linear-gradient(rgba(12,12,12,.50),rgba(12,12,12,.72)),url("https://i.postimg.cc/59B9kWJc/image.png") !important;
+    background-repeat:no-repeat !important;
+    background-size:cover !important;
+    background-position:center center !important;
+    background-attachment:fixed !important;
+    min-height:100vh;
+  }
+
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1 class="main-title">🗝️ Pannello Narratore</h1>
-  <p class="subtitle">Accesso riservato: qui puoi confermare gli accrediti mensili e gestire i PG attivi o archiviati.</p>
+  <h1 class="main-title">Il Mio Elfo Domestico</h1>
+  <p class="subtitle">Lascia che mi occupi io di tutto, padron Narratore</p>
   <div id="app"></div>
 </div>
 
