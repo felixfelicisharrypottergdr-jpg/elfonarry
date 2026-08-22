@@ -214,6 +214,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v69 - Bonus «Tutti i post»: nessuna esclusione per singolo post */
   /* v68 - PP legacy dei singoli post ignorati; valgono solo i Bonus correnti */
   /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
   /* v64 - riepilogo mensile: Oggetti / Bonus usati e aggiornamenti Bagaglio */
@@ -665,7 +666,7 @@
   }
   function narratorPostEligible(post,b){
     if(!post||!isValidPostLink(post.link))return false;
-    if(b.modalita==="all")return !narratorPostExcluded(post,b);
+    if(b.modalita==="all")return true;
     if(b.modalita==="posts")return narratorPostUses(post,b);
     return false;
   }
