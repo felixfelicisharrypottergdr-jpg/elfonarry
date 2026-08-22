@@ -613,7 +613,7 @@
       if(Number.isFinite(d.max))a=Math.min(d.max,a);
       a=Math.round(a*100)/100;
       var delta=Math.round((a-b)*100)/100;
-      if(delta<0){parts.push(d.label+" "+fmtSigned(delta));}
+      if(delta<0){parts.push(fmtSigned(delta)+" "+d.label);}
     }
     return parts;
   }
@@ -1197,7 +1197,7 @@
           var eventBonus=meseBonusPP(mese), eventBonusG=meseBonusGaleoni(mese), eventAltro=meseBonusAltro(mese), eventDesc=String(mese.eventoBonusDescrizione||"").trim();
           if(eventBonus>0 || eventBonusG>0 || eventAltro || eventDesc){
             var eventLine=el("div","cb-notes");
-            eventLine.appendChild(el("span","cb-notes-title","Bonus Evento del mese: "));
+            eventLine.appendChild(el("span","cb-notes-title","Bonus del mese: "));
             var bonusCount=bonusEventPostCount(postsMese),eventParts=[];
             if(eventBonus>0){eventParts.push("+"+eventBonus+" PP/post · +"+totaleBonusEvento(postsMese,mese)+" PP totali");}
             if(eventBonusG>0){eventParts.push("+"+eventBonusG+" G/post · +"+totaleBonusEventoGaleoni(postsMese,mese)+" G totali");}
@@ -1206,7 +1206,7 @@
             eventLine.appendChild(document.createTextNode((eventDesc?eventDesc+" — ":"")+eventParts.join(" · ")+" · "+bonusCount+"/"+postValidiMese+" post con bonus"));
             info.appendChild(eventLine);
             if((eventBonus>0 || eventBonusG>0 || eventAltro) && bonusCount<postValidiMese){
-              var excluded=el("div","cb-notes"); excluded.appendChild(el("span","cb-notes-title","Post esclusi dal Bonus Evento:")); var anyExcluded=false;
+              var excluded=el("div","cb-notes"); excluded.appendChild(el("span","cb-notes-title","Post esclusi dal Bonus:")); var anyExcluded=false;
               for(var ebx=0;ebx<postsMese.length;ebx++){var ebp=postsMese[ebx];if(ebp&&isValidPostLink(ebp.link)&&ebp.eventoBonusEscluso){anyExcluded=true;var exItem=el("div","cb-note-item");exItem.appendChild(document.createTextNode("Post "+(ebx+1)));var exIcon=makeLinkIcon(ebp.link,"Apri il post escluso dal bonus");if(exIcon){exItem.appendChild(exIcon);}excluded.appendChild(exItem);}}
               if(anyExcluded){info.appendChild(excluded);}
             }
