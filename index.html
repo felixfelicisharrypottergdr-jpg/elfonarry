@@ -30,14 +30,28 @@
     padding: 20px 22px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   }
   .panel h2{ margin-top:0; color: var(--green-dark); border-bottom: 2px solid var(--gold); padding-bottom: 8px; }
-  .panel h4{ color: var(--green-dark); margin-bottom:4px; }
+  .panel h4{ color: var(--green-dark); margin-top:24px; margin-bottom:10px; }
   .guide-text{
     background: rgba(212,175,55,.15); border-left: 4px solid var(--gold);
-    padding: 10px 14px; margin-bottom: 16px; font-size: .93rem;
+    padding: 10px 14px; margin: 16px 0; font-size: .93rem;
   }
+  .divider{
+    height:1px;
+    margin:18px 0;
+    background:transparent;
+  }
+  .dashboard-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin:10px 0 18px;
+  }
+  .dashboard-actions button{ margin:0; }
+  .dashboard-search{ margin:18px 0 24px; }
+  .dashboard-search label{ margin-top:0; }
   label{ display:block; font-size: .78rem; font-weight: bold; color: var(--green-dark); margin-bottom: 3px; margin-top: 10px; }
-  input[type=text], input[type=email], input[type=password], input[type=number]{
-    width:100%; padding: 7px 8px; border: 1px solid var(--gold); border-radius: 5px;
+  input[type=text], input[type=email], input[type=password], input[type=number], input[type=search]{
+    width:100%; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 5px;
     background: #fffdf5; font-family: inherit; font-size: .9rem;
   }
   .row{ display:flex; flex-wrap:wrap; gap: 14px; }
@@ -98,6 +112,30 @@
   .chk-line input{ width:auto; transform: scale(1.3); }
   .status-ok{ color: var(--ok); font-weight:bold; }
   .status-pending{ color: var(--red); font-weight:bold; }
+  .delete-request-badge{
+    display:inline-block;
+    padding:4px 8px;
+    border:1px solid #8c2f2f;
+    border-radius:999px;
+    background:#f7e5df;
+    color:#8c2f2f;
+    font-weight:800;
+    font-size:.72rem;
+    letter-spacing:.02em;
+    box-shadow:0 0 8px rgba(140,47,47,.18);
+  }
+  .delete-request-alert{
+    margin:10px 0;
+    padding:9px 11px;
+    border:1px solid #8c2f2f;
+    border-radius:7px;
+    background:#f7e5df;
+    color:#7f2929;
+    font-weight:700;
+    line-height:1.45;
+  }
+  .delete-request-alert button{ margin-top:8px; }
+
   .credit-due-badge{
     display:inline-block;
     margin:6px 0 3px;
@@ -140,8 +178,8 @@
   .link-open-icon:hover{ background:#333; }
 
 
-  .db-health{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:12px 0;}
-  .db-health>div{border:1px solid var(--gold);border-radius:6px;padding:9px;background:rgba(255,255,255,.45);}
+  .db-health{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0 14px;}
+  .db-health>div{border:1px solid var(--gold);border-radius:6px;padding:12px;background:rgba(255,255,255,.45);}
   .db-size-warn{color:#a45d15;font-weight:bold}.db-size-danger{color:#8b1e1e;font-weight:bold}
 
   .history-tools{margin-top:12px;border:1px solid rgba(201,167,92,.55);border-radius:8px;padding:8px;background:rgba(20,20,20,.06)}
@@ -173,6 +211,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
   /* v64 - riepilogo mensile: Oggetti / Bonus usati e aggiornamenti Bagaglio */
   /* v63 - utilizzi iniziali obbligatori per Bonus a consumo */
   /* v61 - bonus a utilizzi/variabili + avvisi Bagaglio */
@@ -348,6 +387,27 @@
       var changes=[],allKeys={};Object.keys(currentValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(nextValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(allKeys).forEach(function(k){if(stableJson(currentValues[k])!==stableJson(nextValues[k]))changes.push({path:"valoriStaff."+k,before:currentValues[k]==null?null:currentValues[k],after:nextValues[k]==null?null:nextValues[k]});});
       tx.set(auditRef,narratorEvent(pgId,"Accrediti e Parametri Sociali",action,changes));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+  window.fbResolveDeleteRequest = function(collectionName, pgId){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve(false); }
+    var pgRef=doc(fbDb,collectionName,pgId), auditRef=doc(collection(fbDb,collectionName,pgId,"audit"));
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(pgRef);
+      if(!snap.exists())throw new Error("missing-pg");
+      var cur=snap.data()||{};
+      if(cur._deleted)throw new Error("deleted-pg");
+      tx.set(pgRef,{
+        RICHIESTA_ELIMINAZIONE:false,
+        _dbRevision:(parseInt(cur._dbRevision,10)||0)+1,
+        _lastModifiedAt:serverTimestamp(),
+        _lastModifiedBy:"narratore",
+        _lastSessionId:""
+      },{merge:true});
+      tx.set(auditRef,narratorEvent(pgId,"Gestione PG","Richiesta di eliminazione annullata dal Narratore",[
+        {path:"RICHIESTA_ELIMINAZIONE",before:true,after:false}
+      ]));
+    }).then(function(){return true;}).catch(function(e){console.error(e);return false;});
   };
 
   window.fbSetArchived = function(collectionName, pgId, valore){
@@ -918,24 +978,34 @@
     var p = el("div", "panel");
     p.appendChild(el("h2", null, "Personaggi registrati"));
 
+    var dashboardActions=el("div","dashboard-actions");
     var btnLogout = el("button", "action small", "Esci");
     btnLogout.addEventListener(EV, function(){ window.fbSignOut(); });
-    p.appendChild(btnLogout);
+    dashboardActions.appendChild(btnLogout);
 
     var btnRefresh = el("button", "action small", "Aggiorna elenco");
-    btnRefresh.style.marginLeft = "8px";
     btnRefresh.addEventListener(EV, function(){
       btnRefresh.textContent = "Aggiornamento\u2026";
       caricaTutto(function(){ renderApp(); });
     });
-    p.appendChild(btnRefresh);
+    dashboardActions.appendChild(btnRefresh);
+    p.appendChild(dashboardActions);
 
     p.appendChild(el("div", "divider"));
     p.appendChild(el("div","guide-text","<b>Gestione PG:</b> usa «Archivio periodico e pulizia database» per copiare sul Forum i dati conclusi e poi rimuoverli in sicurezza da Firebase. «Archivia PG» congela invece l’intero Personaggio senza cancellarlo; da lì puoi generare il backup definitivo prima di eliminarlo. L’eliminazione definitiva rimuove i dati di gioco ma conserva un marcatore tecnico minimo che impedisce di ricreare accidentalmente lo stesso PG. L’archiviazione semplice non riduce lo spazio occupato."));
     var allPg=datiAdulti.concat(datiStudenti), totalBytes=0, maxBytes=0, maxPg="";for(var dh=0;dh<allPg.length;dh++){var b=stateSizeBytes(allPg[dh].data);totalBytes+=b;if(b>maxBytes){maxBytes=b;maxPg=allPg[dh].id;}}
     var health=el("div","db-health");health.appendChild(el("div",null,"PG nel database<br><b>"+allPg.length+"</b>"));health.appendChild(el("div",null,"Dati PG stimati<br><b>"+sizeLabel(totalBytes)+"</b>"));var hc=el("div",maxBytes>850000?"db-size-danger":(maxBytes>650000?"db-size-warn":""),"PG più pesante<br><b>"+(maxPg||"—")+" · "+firestoreDocUsage(maxBytes)+"</b>");health.appendChild(hc);p.appendChild(health);p.appendChild(el("p","small-note","La stima «Dati PG» riguarda i documenti principali dei Personaggi. Registro modifiche, snapshot e accrediti sono documenti Firebase separati e non rientrano in questo totale."));if(maxBytes>650000){p.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ Conviene effettuare una pulizia periodica del PG più pesante prima che il singolo documento si avvicini al limite Firestore."));}
 
-    var searchBox=el("div","guide-text");var searchLabel=el("label",null,"Cerca PG");var searchInput=el("input");searchInput.type="search";searchInput.placeholder="Scrivi nome o cognome…";searchInput.value=filtroPg;searchInput.style.marginTop="6px";searchLabel.appendChild(searchInput);searchBox.appendChild(searchLabel);p.appendChild(searchBox);
+    var searchBox=el("div","guide-text dashboard-search");
+    var searchLabel=el("label",null,"Cerca PG");
+    var searchInput=el("input");
+    searchInput.type="search";
+    searchInput.placeholder="Scrivi nome o cognome…";
+    searchInput.value=filtroPg;
+    searchInput.style.marginTop="8px";
+    searchLabel.appendChild(searchInput);
+    searchBox.appendChild(searchLabel);
+    p.appendChild(searchBox);
     var matchPg=function(x){var q=String(filtroPg||"").trim().toLowerCase();return !q||String(x.id||"").toLowerCase().indexOf(q)>=0;};
     var adultiAttiviAll=datiAdulti.filter(function(x){return !x.data._archiviato;}), studentiAttiviAll=datiStudenti.filter(function(x){return !x.data._archiviato;}), adultiArchAll=datiAdulti.filter(function(x){return !!x.data._archiviato;}), studentiArchAll=datiStudenti.filter(function(x){return !!x.data._archiviato;});
     var adultiAttivi=adultiAttiviAll.filter(matchPg), studentiAttivi=studentiAttiviAll.filter(matchPg), adultiArch=adultiArchAll.filter(matchPg), studentiArch=studentiArchAll.filter(matchPg);
@@ -1308,9 +1378,28 @@
     var mesi = pgEntry.data.MESI ? pgEntry.data.MESI : [];
     var summary=el("summary","pg-card-summary");
     summary.appendChild(el("span","pg-card-name",pgEntry.id));
+    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
+      summary.appendChild(el("span","delete-request-badge","⚠ RICHIESTA ELIMINAZIONE"));
+    }
     summary.appendChild(el("span","pg-card-meta",mesi.length+" mesi · ~"+firestoreDocUsage(stateSizeBytes(pgEntry.data))+" · ultima modifica "+fmtDateTime(pgEntry.data&&pgEntry.data._lastModifiedAt)));
     card.appendChild(summary);
     appendLastModification(card,pgEntry.data);
+    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
+      var reqBox=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l'eliminazione da questo Tool.</b><br>Se la richiesta è corretta, usa «Elimina senza esportare» qui sotto. Se invece va ignorata, annullala.");
+      var dismissReq=el("button","action small","Annulla richiesta");
+      dismissReq.type="button";
+      dismissReq.addEventListener(EV,function(){
+        if(!confirm("Annullare la richiesta di eliminazione di "+pgEntry.id+" senza cancellare il PG?"))return;
+        var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";
+        dismissReq.disabled=true;
+        window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){
+          if(ok){caricaTutto(function(){renderApp();});}
+          else{dismissReq.disabled=false;alert("Non è stato possibile annullare la richiesta.");}
+        });
+      });
+      reqBox.appendChild(dismissReq);
+      card.appendChild(reqBox);
+    }
     var duplicateMesiCount = duplicateMonthNameCount(mesi);
     if(duplicateMesiCount){
       card.appendChild(el("div","warning-alert","⚠ Questo PG contiene "+duplicateMesiCount+" Mese/i con nome duplicato già presenti nello storico. I Tracker ora impediscono nuovi duplicati: rinomina una delle vecchie voci per evitare ambiguità nel riepilogo mensile."));
