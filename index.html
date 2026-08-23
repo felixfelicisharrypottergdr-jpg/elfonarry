@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://i.postimg.cc">
 <link rel="preload" as="image" href="https://i.postimg.cc/6pKKxhkk/elfo-biblioteca.webp" fetchpriority="high">
 <style>
+  /* v62 - Elenco PG compatto: schede più basse e sottili per gestire
+     comodamente un numero elevato di personaggi */
+
   /* v61 - Narratore: aggiornamento/rimozione dei Premi a utilizzi
      accorpato direttamente nella barra DA ACCREDITARE;
      eliminato il riepilogo Bonus/Utilizzi separato del mese */
@@ -78,23 +81,50 @@
     margin-bottom: 14px; background: #fffdf5;
   }
   .card h3{ margin: 0 0 8px 0; color: var(--green-dark); font-size:1.05rem; }
-  details.pg-card{ padding:0; overflow:hidden; }
+  details.pg-card{
+    padding:0;
+    overflow:hidden;
+    margin-bottom:8px;
+    border-radius:7px;
+  }
   details.pg-card > summary.pg-card-summary{
-    cursor:pointer; list-style:none; padding:12px 42px 12px 15px; position:relative;
-    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    cursor:pointer; list-style:none; padding:8px 36px 8px 12px; position:relative;
+    min-height:42px;
+    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap;
     color:var(--green-dark); background:#fffdf5; user-select:none;
   }
   details.pg-card > summary.pg-card-summary::-webkit-details-marker{ display:none; }
   details.pg-card > summary.pg-card-summary::after{
-    content:"▸"; position:absolute; right:15px; top:50%; transform:translateY(-50%);
-    font-size:1.1rem; color:var(--green-dark);
+    content:"▸"; position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    font-size:.9rem; color:var(--green-dark);
   }
   details.pg-card[open] > summary.pg-card-summary::after{ content:"▾"; }
   details.pg-card[open] > summary.pg-card-summary{ border-bottom:1px dashed var(--gold); background:#f7f0df; }
-  .pg-card-name{ font-weight:700; font-size:1.02rem; }
-  .pg-card-meta{ font-size:.76rem; color:#6a5a3a; font-weight:500; }
-  details.pg-card > :not(summary){ margin-left:15px; margin-right:15px; }
-  details.pg-card > :last-child{ margin-bottom:13px; }
+  .pg-card-name{
+    font-weight:700;
+    font-size:.9rem;
+    line-height:1.15;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    min-width:0;
+  }
+  .pg-card-meta{
+    font-size:.68rem;
+    line-height:1.15;
+    color:#6a5a3a;
+    font-weight:500;
+    white-space:nowrap;
+    text-align:right;
+    flex-shrink:0;
+  }
+  details.pg-card > :not(summary){ margin-left:12px; margin-right:12px; }
+  details.pg-card > :last-child{ margin-bottom:10px; }
+
+  #stepContainer > .panel > h4{
+    margin:14px 0 7px;
+    font-size:.92rem;
+  }
   .mese-row{
     display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
     border-top: 1px dashed var(--gold); padding: 10px 0; font-size:.9rem;
