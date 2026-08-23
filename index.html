@@ -7,20 +7,6 @@
 <link rel="preconnect" href="https://i.postimg.cc">
 <link rel="preload" as="image" href="https://i.postimg.cc/6pKKxhkk/elfo-biblioteca.webp" fetchpriority="high">
 <style>
-  /* v62 - Elenco PG compatto: schede più basse e sottili per gestire
-     comodamente un numero elevato di personaggi */
-
-  /* v61 - Narratore: aggiornamento/rimozione dei Premi a utilizzi
-     accorpato direttamente nella barra DA ACCREDITARE;
-     eliminato il riepilogo Bonus/Utilizzi separato del mese */
-
-  /* v60 - Utilizzi Narratore: solo l'ultimo uso del Bonus porta AGGIORNARE/TERMINATO;
-     gli utilizzi precedenti restano neutri e mostrano soltanto la progressione */
-
-  /* v59 - Bonus CB generici allineati ai Tracker:
-     totali corretti per Bonus multipli/fissi/variabili;
-     utilizzi progressivi compatti e stato AGGIORNARE/TERMINATO accanto al riepilogo del mese */
-
   :root{
     --parch:#e9e6dd; --parch-dark:#d4cfbd; --ink:#1c1c1c;
     --green:#1a1a1a; --green-dark:#000000; --gold:#d4af37; --red:#7a2323; --ok:#2e6b3e;
@@ -41,17 +27,38 @@
   p.subtitle{ text-align:center; color: var(--parch-dark); margin-top:0; margin-bottom: 24px; font-style: italic; }
   .panel{
     background: var(--parch); border: 2px solid var(--gold); border-radius: 10px;
-    padding: 20px 22px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    padding: 26px 28px; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   }
-  .panel h2{ margin-top:0; color: var(--green-dark); border-bottom: 2px solid var(--gold); padding-bottom: 8px; }
-  .panel h4{ color: var(--green-dark); margin-bottom:4px; }
+  .panel h2{ margin-top:0; color: var(--green-dark); border-bottom: 2px solid var(--gold); padding-bottom: 12px; margin-bottom: 18px; }
+  .panel h4{ color: var(--green-dark); margin-top:28px; margin-bottom:12px; }
   .guide-text{
     background: rgba(212,175,55,.15); border-left: 4px solid var(--gold);
-    padding: 10px 14px; margin-bottom: 16px; font-size: .93rem;
+    padding: 16px 22px; margin: 24px 0 28px; font-size: .93rem; line-height:1.55;
   }
+  .divider{
+    height:1px;
+    margin:24px 0 26px;
+    background:transparent;
+  }
+  .dashboard-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:16px;
+    margin:18px 0 28px;
+  }
+  .dashboard-actions button{ margin:0; }
+  .dashboard-search{ margin:28px 0 34px; padding:18px 22px; }
+  .dashboard-search .dashboard-search-title{ margin:0 0 12px; font-size:1.02rem; color:var(--green-dark); }
+  .dashboard-search .dashboard-search-field{ max-width:440px; margin-top:6px; }
+  .dashboard-search .dashboard-search-field label{ margin:0 0 10px; }
+  .dashboard-search .dashboard-search-field input{ margin-top:0 !important; }
+  .db-health{display:grid;grid-template-columns:minmax(260px,520px);gap:18px;margin:28px 0 22px;}
+  .db-health>div{border:1px solid var(--gold);border-radius:8px;padding:18px 16px;background:rgba(255,255,255,.45);line-height:1.45;}
+  .db-free-space{display:block;margin-top:7px;font-size:.78rem;color:#665b43;font-style:italic;}
+  .panel .small-note{ margin:18px 0 22px; line-height:1.55; }
   label{ display:block; font-size: .78rem; font-weight: bold; color: var(--green-dark); margin-bottom: 3px; margin-top: 10px; }
-  input[type=text], input[type=email], input[type=password], input[type=number]{
-    width:100%; padding: 7px 8px; border: 1px solid var(--gold); border-radius: 5px;
+  input[type=text], input[type=email], input[type=password], input[type=number], input[type=search]{
+    width:100%; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 5px;
     background: #fffdf5; font-family: inherit; font-size: .9rem;
   }
   .row{ display:flex; flex-wrap:wrap; gap: 14px; }
@@ -81,50 +88,23 @@
     margin-bottom: 14px; background: #fffdf5;
   }
   .card h3{ margin: 0 0 8px 0; color: var(--green-dark); font-size:1.05rem; }
-  details.pg-card{
-    padding:0;
-    overflow:hidden;
-    margin-bottom:8px;
-    border-radius:7px;
-  }
+  details.pg-card{ padding:0; overflow:hidden; }
   details.pg-card > summary.pg-card-summary{
-    cursor:pointer; list-style:none; padding:8px 36px 8px 12px; position:relative;
-    min-height:42px;
-    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:nowrap;
+    cursor:pointer; list-style:none; padding:12px 42px 12px 15px; position:relative;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
     color:var(--green-dark); background:#fffdf5; user-select:none;
   }
   details.pg-card > summary.pg-card-summary::-webkit-details-marker{ display:none; }
   details.pg-card > summary.pg-card-summary::after{
-    content:"▸"; position:absolute; right:12px; top:50%; transform:translateY(-50%);
-    font-size:.9rem; color:var(--green-dark);
+    content:"▸"; position:absolute; right:15px; top:50%; transform:translateY(-50%);
+    font-size:1.1rem; color:var(--green-dark);
   }
   details.pg-card[open] > summary.pg-card-summary::after{ content:"▾"; }
   details.pg-card[open] > summary.pg-card-summary{ border-bottom:1px dashed var(--gold); background:#f7f0df; }
-  .pg-card-name{
-    font-weight:700;
-    font-size:.9rem;
-    line-height:1.15;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    min-width:0;
-  }
-  .pg-card-meta{
-    font-size:.68rem;
-    line-height:1.15;
-    color:#6a5a3a;
-    font-weight:500;
-    white-space:nowrap;
-    text-align:right;
-    flex-shrink:0;
-  }
-  details.pg-card > :not(summary){ margin-left:12px; margin-right:12px; }
-  details.pg-card > :last-child{ margin-bottom:10px; }
-
-  #stepContainer > .panel > h4{
-    margin:14px 0 7px;
-    font-size:.92rem;
-  }
+  .pg-card-name{ font-weight:700; font-size:1.02rem; }
+  .pg-card-meta{ font-size:.76rem; color:#6a5a3a; font-weight:500; }
+  details.pg-card > :not(summary){ margin-left:15px; margin-right:15px; }
+  details.pg-card > :last-child{ margin-bottom:13px; }
   .mese-row{
     display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
     border-top: 1px dashed var(--gold); padding: 10px 0; font-size:.9rem;
@@ -139,6 +119,30 @@
   .chk-line input{ width:auto; transform: scale(1.3); }
   .status-ok{ color: var(--ok); font-weight:bold; }
   .status-pending{ color: var(--red); font-weight:bold; }
+  .delete-request-badge{
+    display:inline-block;
+    padding:4px 8px;
+    border:1px solid #8c2f2f;
+    border-radius:999px;
+    background:#f7e5df;
+    color:#8c2f2f;
+    font-weight:800;
+    font-size:.72rem;
+    letter-spacing:.02em;
+    box-shadow:0 0 8px rgba(140,47,47,.18);
+  }
+  .delete-request-alert{
+    margin:10px 0;
+    padding:9px 11px;
+    border:1px solid #8c2f2f;
+    border-radius:7px;
+    background:#f7e5df;
+    color:#7f2929;
+    font-weight:700;
+    line-height:1.45;
+  }
+  .delete-request-alert button{ margin-top:8px; }
+
   .credit-due-badge{
     display:inline-block;
     margin:6px 0 3px;
@@ -150,55 +154,27 @@
     font-weight:bold;
     font-size:.78rem;
   }
-  .narrator-cb-summary{
-    margin:6px 0 5px;
-    padding:7px 9px;
-    border:1px solid rgba(169,128,58,.55);
-    border-radius:6px;
-    background:#fffaf0;
-  }
-  .narrator-bonus-line{
-    margin:3px 0;
-    font-size:.78rem;
-    line-height:1.45;
-    color:#5a4a30;
-  }
-  .narrator-bonus-name{
-    font-weight:800;
-    color:var(--green-dark);
-  }
-  .narrator-usage-list{
-    display:flex;
-    flex-wrap:wrap;
-    gap:4px;
-    margin-top:4px;
-  }
-  .narrator-usage-badge,
-  .narrator-usage-state{
-    display:inline-block;
-    padding:3px 6px;
-    border-radius:5px;
-    font-size:.72rem;
-    font-weight:800;
-  }
-  .narrator-usage-plain{
-    display:inline-block;
-    padding:3px 6px;
-    font-size:.72rem;
-    font-weight:700;
-    color:#5a4a30;
-  }
-  .narrator-usage-badge.update,
-  .narrator-usage-state.update{
-    background:#fff0cf;
+
+  .bag-update-warning{
+    margin:6px 0;
+    padding:6px 9px;
     border:1px solid #d88b18;
-    color:#9a5400;
+    border-radius:6px;
+    background:#fff0cf;
+    color:#8a4c00;
+    font-weight:bold;
+    font-size:.78rem;
   }
-  .narrator-usage-badge.exhausted,
-  .narrator-usage-state.exhausted{
-    background:#f8dfda;
+  .bag-remove-warning{
+    margin:6px 0;
+    padding:6px 9px;
     border:1px solid #9b2f2a;
+    border-radius:6px;
+    background:#f8dfda;
     color:#8f211d;
+    font-weight:bold;
+    text-decoration:underline;
+    font-size:.78rem;
   }
   .small-note{ font-size:.76rem; color:#5a4a30; font-style:italic; margin-top:4px; }
   select{ width:100%; padding:7px 8px; border:1px solid var(--gold); border-radius:5px; background:#fffdf5; font-family:inherit; font-size:.9rem; }
@@ -209,9 +185,7 @@
   .link-open-icon:hover{ background:#333; }
 
 
-  .db-health{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:12px 0;}
-  .db-health>div{border:1px solid var(--gold);border-radius:6px;padding:9px;background:rgba(255,255,255,.45);}
-  .db-size-warn{color:#a45d15;font-weight:bold}.db-size-danger{color:#8b1e1e;font-weight:bold}
+    .db-size-warn{color:#a45d15;font-weight:bold}.db-size-danger{color:#8b1e1e;font-weight:bold}
 
   .history-tools{margin-top:12px;border:1px solid rgba(201,167,92,.55);border-radius:8px;padding:8px;background:rgba(20,20,20,.06)}
   .history-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:8px 0}.history-controls>div{min-width:150px}
@@ -242,6 +216,12 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v69 - Bonus «Tutti i post»: nessuna esclusione per singolo post */
+  /* v68 - PP legacy dei singoli post ignorati; valgono solo i Bonus correnti */
+  /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
+  /* v64 - riepilogo mensile: Oggetti / Bonus usati e aggiornamenti Bagaglio */
+  /* v63 - utilizzi iniziali obbligatori per Bonus a consumo */
+  /* v61 - bonus a utilizzi/variabili + avvisi Bagaglio */
   /* v56 - riepilogo accredito include perdite Parametri Sociali */
   /* v55 - accrediti Evento PP/Galeoni/Altro + evidenza Da accreditare */
   /* v54 - sfondo Narratore; indipendente dall'altezza dinamica della pagina */
@@ -414,6 +394,27 @@
       var changes=[],allKeys={};Object.keys(currentValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(nextValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(allKeys).forEach(function(k){if(stableJson(currentValues[k])!==stableJson(nextValues[k]))changes.push({path:"valoriStaff."+k,before:currentValues[k]==null?null:currentValues[k],after:nextValues[k]==null?null:nextValues[k]});});
       tx.set(auditRef,narratorEvent(pgId,"Accrediti e Parametri Sociali",action,changes));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+  window.fbResolveDeleteRequest = function(collectionName, pgId){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve(false); }
+    var pgRef=doc(fbDb,collectionName,pgId), auditRef=doc(collection(fbDb,collectionName,pgId,"audit"));
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(pgRef);
+      if(!snap.exists())throw new Error("missing-pg");
+      var cur=snap.data()||{};
+      if(cur._deleted)throw new Error("deleted-pg");
+      tx.set(pgRef,{
+        RICHIESTA_ELIMINAZIONE:false,
+        _dbRevision:(parseInt(cur._dbRevision,10)||0)+1,
+        _lastModifiedAt:serverTimestamp(),
+        _lastModifiedBy:"narratore",
+        _lastSessionId:""
+      },{merge:true});
+      tx.set(auditRef,narratorEvent(pgId,"Gestione PG","Richiesta di eliminazione annullata dal Narratore",[
+        {path:"RICHIESTA_ELIMINAZIONE",before:true,after:false}
+      ]));
+    }).then(function(){return true;}).catch(function(e){console.error(e);return false;});
   };
 
   window.fbSetArchived = function(collectionName, pgId, valore){
@@ -615,279 +616,157 @@
   }
   function meseBonusPP(mese){var v=parseInt(mese&&mese.eventoBonusPP!=null?mese.eventoBonusPP:0,10);return (!isNaN(v)&&v>0)?v:0;}
   function meseBonusGaleoni(mese){var v=parseInt(mese&&mese.eventoBonusGaleoni!=null?mese.eventoBonusGaleoni:0,10);return (!isNaN(v)&&v>0)?v:0;}
-  function normalizeBonusMode(v){return ["all","posts","manual"].indexOf(v)>=0?v:"all";}
-  function normalizeBonusValueMode(v){return ["fixed","variable"].indexOf(v)>=0?v:"fixed";}
-  function normalizeVariableTarget(v){return ["pp","galeoni","altro"].indexOf(v)>=0?v:"pp";}
-  function primaryBonusItem(mese){
-    return {
-      id:"__primary__",primary:true,
-      descrizione:String(mese&&mese.eventoBonusDescrizione||""),
-      pp:meseBonusPP(mese),
-      galeoni:meseBonusGaleoni(mese),
-      altro:String(mese&&mese.eventoBonusAltro||"").trim(),
-      modalita:normalizeBonusMode(mese&&mese.eventoBonusModalita),
-      valore:normalizeBonusValueMode(mese&&mese.eventoBonusValore),
+  function meseBonusAltro(mese){return String(mese&&mese.eventoBonusAltro!=null?mese.eventoBonusAltro:"").trim();}
+  function normBonusMode(v){return ["all","posts","manual"].indexOf(v)>=0?v:"all";}
+  function normBonusValue(v){return ["fixed","variable"].indexOf(v)>=0?v:"fixed";}
+  function normBonusTarget(v){return ["pp","galeoni","altro"].indexOf(v)>=0?v:"pp";}
+
+  function narratorAllBonuses(mese){
+    var out=[{
+      id:"__primary__",primary:true,descrizione:String(mese&&mese.eventoBonusDescrizione||""),
+      pp:meseBonusPP(mese),galeoni:meseBonusGaleoni(mese),altro:meseBonusAltro(mese),
+      modalita:normBonusMode(mese&&mese.eventoBonusModalita),valore:normBonusValue(mese&&mese.eventoBonusValore),
       maxUtilizzi:Math.max(0,parseInt(mese&&mese.eventoBonusMaxUtilizzi,10)||0),
       usatiIniziali:Math.max(0,parseInt(mese&&mese.eventoBonusUsatiIniziali,10)||0),
       usatiConfermati:mese&&mese.eventoBonusUsatiConfermati===true,
-      variabileSu:normalizeVariableTarget(mese&&mese.eventoBonusVariabileSu),
+      variabileSu:normBonusTarget(mese&&mese.eventoBonusVariabileSu),
       utilizziManuali:Math.max(0,parseInt(mese&&mese.eventoBonusUtilizziManuali,10)||0)
-    };
-  }
-  function allMonthBonuses(mese){
-    var out=[primaryBonusItem(mese)],extras=Array.isArray(mese&&mese.bonusAggiuntivi)?mese.bonusAggiuntivi:[];
-    for(var i=0;i<extras.length;i++){
-      var b=extras[i]||{};
+    }];
+    var ex=Array.isArray(mese&&mese.bonusAggiuntivi)?mese.bonusAggiuntivi:[];
+    for(var i=0;i<ex.length;i++){
+      var b=ex[i]||{};
       out.push({
-        id:String(b.id||("__extra_"+i)),primary:false,
-        descrizione:String(b.descrizione||""),
-        pp:Math.max(0,parseInt(b.pp,10)||0),
-        galeoni:Math.max(0,parseInt(b.galeoni,10)||0),
-        altro:String(b.altro||"").trim(),
-        modalita:normalizeBonusMode(b.modalita),
-        valore:normalizeBonusValueMode(b.valore),
-        maxUtilizzi:Math.max(0,parseInt(b.maxUtilizzi,10)||0),
-        usatiIniziali:Math.max(0,parseInt(b.usatiIniziali,10)||0),
+        id:String(b.id||("bonus_"+i)),primary:false,descrizione:String(b.descrizione||""),
+        pp:Math.max(0,parseInt(b.pp,10)||0),galeoni:Math.max(0,parseInt(b.galeoni,10)||0),altro:String(b.altro||"").trim(),
+        modalita:normBonusMode(b.modalita),valore:normBonusValue(b.valore),
+        maxUtilizzi:Math.max(0,parseInt(b.maxUtilizzi,10)||0),usatiIniziali:Math.max(0,parseInt(b.usatiIniziali,10)||0),
         usatiConfermati:b.usatiConfermati===true,
-        variabileSu:normalizeVariableTarget(b.variabileSu),
-        utilizziManuali:Math.max(0,parseInt(b.utilizziManuali,10)||0)
+        variabileSu:normBonusTarget(b.variabileSu),utilizziManuali:Math.max(0,parseInt(b.utilizziManuali,10)||0)
       });
     }
-    return out;
+    var active=[];
+    for(var j=0;j<out.length;j++){
+      var x=out[j];
+      if(String(x.descrizione||"").trim()!==""||x.pp>0||x.galeoni>0||x.altro!==""||x.modalita!=="all"||x.maxUtilizzi>0)active.push(x);
+    }
+    return active;
   }
-  function bonusIsActive(b){
-    return !!(b&&(String(b.descrizione||"").trim()!==""||b.pp>0||b.galeoni>0||String(b.altro||"").trim()!==""||b.modalita!=="all"||b.maxUtilizzi>0));
+  function narratorBonusName(b,idx){var d=String(b&&b.descrizione||"").trim();return d||("Bonus "+(idx+1));}
+  function narratorPostExcluded(post,b){
+    if(!post||!b)return false;
+    if(b.primary)return !!post.eventoBonusEscluso;
+    return !!(post.bonusEsclusi&&post.bonusEsclusi[b.id]);
   }
-  function activeMonthBonuses(mese){
-    var all=allMonthBonuses(mese),out=[];
-    for(var i=0;i<all.length;i++){if(bonusIsActive(all[i]))out.push(all[i]);}
-    return out;
-  }
-  function bonusDisplayName(b,idx){var d=String(b&&b.descrizione||"").trim();return d||("Bonus "+(idx+1));}
-  function getBonusUsageRecord(post,b){
-    if(!post||!b||!post.bonusUtilizzi||typeof post.bonusUtilizzi!=="object"||Array.isArray(post.bonusUtilizzi)){return null;}
+  function narratorUsageRecord(post,b){
+    if(!post||!post.bonusUtilizzi||typeof post.bonusUtilizzi!=="object")return null;
     var r=post.bonusUtilizzi[String(b.id)];
-    if(!r){return null;}
-    return {
-      used:!!r.used,
-      pp:Math.max(0,parseInt(r.pp,10)||0),
-      galeoni:Math.max(0,parseInt(r.galeoni,10)||0),
-      altro:String(r.altro||""),
-      link:String(r.link||"")
-    };
+    return r&&typeof r==="object"?r:null;
   }
-  function postUsesLimitedBonus(post,b){var r=getBonusUsageRecord(post,b);return !!(r&&r.used&&isValidPostLink(post&&post.link));}
-  function bonusPostsUsedThisMonth(b,posts,endExclusive){
-    var c=0,limit=Math.min(posts.length,endExclusive==null?posts.length:endExclusive);
-    if(b.modalita!=="posts"){return 0;}
-    for(var i=0;i<limit;i++){if(postUsesLimitedBonus(posts[i],b))c++;}
-    return c;
+  function narratorPostUses(post,b){
+    var r=narratorUsageRecord(post,b);
+    return !!(r&&r.used&&isValidPostLink(post&&post.link));
   }
-  function bonusUsedThisMonth(b,posts){
-    if(b.modalita==="posts"){return bonusPostsUsedThisMonth(b,posts,posts.length);}
-    if(b.modalita==="manual"){return Math.max(0,parseInt(b.utilizziManuali,10)||0);}
-    return 0;
-  }
-  function bonusCurrentUses(b,posts){return Math.max(0,parseInt(b.usatiIniziali,10)||0)+bonusUsedThisMonth(b,posts);}
-  function postEligibleForBonus(post,b){
-    if(!post||!isValidPostLink(post.link)){return false;}
-    if(b.modalita==="all"){return true;}
-    if(b.modalita==="posts"){return postUsesLimitedBonus(post,b);}
+  function narratorPostEligible(post,b){
+    if(!post||!isValidPostLink(post.link))return false;
+    if(b.modalita==="all")return true;
+    if(b.modalita==="posts")return narratorPostUses(post,b);
     return false;
   }
-  function bonusPPOnPost(b,post){
-    if(!postEligibleForBonus(post,b)){return 0;}
+  function narratorBonusCount(posts,b){
+    if(b.modalita==="manual")return Math.max(0,parseInt(b.utilizziManuali,10)||0);
+    var c=0;posts=Array.isArray(posts)?posts:[];
+    for(var i=0;i<posts.length;i++)if(narratorPostEligible(posts[i],b))c++;
+    return c;
+  }
+  function narratorBonusCurrentUses(posts,b){return Math.max(0,parseInt(b.usatiIniziali,10)||0)+narratorBonusCount(posts,b);}
+  function narratorBonusPPOnPost(post,b){
+    if(!narratorPostEligible(post,b))return 0;
     if(b.modalita==="posts"&&b.valore==="variable"){
-      var r=getBonusUsageRecord(post,b);
+      var r=narratorUsageRecord(post,b);
       return b.variabileSu==="pp"&&r?Math.max(0,parseInt(r.pp,10)||0):0;
     }
-    return Math.max(0,parseInt(b.pp,10)||0);
+    return b.pp;
   }
-  function bonusGOnPost(b,post){
-    if(!postEligibleForBonus(post,b)){return 0;}
+  function narratorBonusGOnPost(post,b){
+    if(!narratorPostEligible(post,b))return 0;
     if(b.modalita==="posts"&&b.valore==="variable"){
-      var r=getBonusUsageRecord(post,b);
+      var r=narratorUsageRecord(post,b);
       return b.variabileSu==="galeoni"&&r?Math.max(0,parseInt(r.galeoni,10)||0):0;
     }
-    return Math.max(0,parseInt(b.galeoni,10)||0);
+    return b.galeoni;
   }
-  function bonusAltroOnPost(b,post){
-    if(!postEligibleForBonus(post,b)){return "";}
+  function narratorBonusAltroOnPost(post,b){
+    if(!narratorPostEligible(post,b))return "";
     if(b.modalita==="posts"&&b.valore==="variable"){
-      var r=getBonusUsageRecord(post,b);
+      var r=narratorUsageRecord(post,b);
       return b.variabileSu==="altro"&&r?String(r.altro||"").trim():"";
     }
     return String(b.altro||"").trim();
   }
-  function bonusManualPPTotal(b){return b.modalita==="manual"?Math.max(0,parseInt(b.utilizziManuali,10)||0)*Math.max(0,parseInt(b.pp,10)||0):0;}
-  function bonusManualGTotal(b){return b.modalita==="manual"?Math.max(0,parseInt(b.utilizziManuali,10)||0)*Math.max(0,parseInt(b.galeoni,10)||0):0;}
-  function bonusMonthPPTotal(mese,posts){
-    var bonuses=activeMonthBonuses(mese),tot=0;
+  function totaleG(tipo,posts,mese){
+    var count=0;for(var i=0;i<posts.length;i++)if(posts[i]&&isValidPostLink(posts[i].link))count++;
+    var tot=0;for(var p=1;p<=count;p++)tot+=valoreG(tipo,p);
+    var bonuses=narratorAllBonuses(mese);
     for(var b=0;b<bonuses.length;b++){
-      for(var i=0;i<posts.length;i++)tot+=bonusPPOnPost(bonuses[b],posts[i]);
-      tot+=bonusManualPPTotal(bonuses[b]);
+      for(var j=0;j<posts.length;j++)tot+=narratorBonusGOnPost(posts[j],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
     }
     return tot;
   }
-  function bonusMonthGTotal(mese,posts){
-    var bonuses=activeMonthBonuses(mese),tot=0;
+  function totalePP(posts,mese){
+    var tot=0,bonuses=narratorAllBonuses(mese);
+    for(var i=0;i<posts.length;i++){
+      var post=posts[i];if(!post||!isValidPostLink(post.link))continue;
+      /* post.pp appartiene al vecchio sistema Bonus ed è ignorato.
+         I PP validi arrivano esclusivamente dai Bonus generici correnti. */
+      for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b]);
+    }
+    for(var k=0;k<bonuses.length;k++)if(bonuses[k].modalita==="manual")tot+=bonuses[k].utilizziManuali*bonuses[k].pp;
+    return tot;
+  }
+  function totaleBonusEvento(posts,mese){
+    var bonuses=narratorAllBonuses(mese),tot=0;
     for(var b=0;b<bonuses.length;b++){
-      for(var i=0;i<posts.length;i++)tot+=bonusGOnPost(bonuses[b],posts[i]);
-      tot+=bonusManualGTotal(bonuses[b]);
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusPPOnPost(posts[i],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].pp;
     }
     return tot;
   }
-  function bonusAltroSummary(mese,posts){
-    var bonuses=activeMonthBonuses(mese),out=[];
+  function totaleBonusEventoGaleoni(posts,mese){
+    var bonuses=narratorAllBonuses(mese),tot=0;
     for(var b=0;b<bonuses.length;b++){
-      var bi=bonuses[b],name=bonusDisplayName(bi,b);
-      if(bi.modalita==="manual"){
-        if(bi.utilizziManuali>0&&bi.altro){out.push(name+": "+bi.altro);}
-        continue;
-      }
-      if(bi.modalita==="all"&&bi.altro&&validPostCount(posts)>0){out.push(name+": "+bi.altro);continue;}
-      if(bi.modalita==="posts"){
-        if(bi.valore==="fixed"&&bi.altro&&bonusUsedThisMonth(bi,posts)>0){out.push(name+": "+bi.altro);continue;}
-        if(bi.valore==="variable"&&bi.variabileSu==="altro"){
-          for(var i=0;i<posts.length;i++){
-            var r=getBonusUsageRecord(posts[i],bi);
-            if(r&&r.used&&String(r.altro||"").trim()){out.push(name+": "+String(r.altro).trim());}
-          }
-        }
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusGOnPost(posts[i],bonuses[b]);
+      if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
+    }
+    return tot;
+  }
+  function allBonusAltro(mese,posts){
+    var bonuses=narratorAllBonuses(mese),out=[];
+    for(var b=0;b<bonuses.length;b++){
+      if(bonuses[b].modalita==="manual"&&bonuses[b].utilizziManuali>0&&bonuses[b].altro)out.push(narratorBonusName(bonuses[b],b)+": "+bonuses[b].altro);
+      for(var i=0;i<(posts||[]).length;i++){
+        var a=narratorBonusAltroOnPost(posts[i],bonuses[b]);if(a)out.push(a);
       }
     }
     return out.join(", ");
   }
-  function meseBonusAltro(mese,posts){return bonusAltroSummary(mese,Array.isArray(posts)?posts:[]);}
-  function totaleG(tipo, posts, mese){
-    posts=Array.isArray(posts)?posts:[];
-    var count=validPostCount(posts),tot=0;
-    for(var p=1;p<=count;p++){tot+=valoreG(tipo,p);}
-    return tot+bonusMonthGTotal(mese,posts);
-  }
-  function totalePP(posts,mese){
-    posts=Array.isArray(posts)?posts:[];
-    return bonusMonthPPTotal(mese,posts);
-  }
-  function totaleBonusEvento(posts,mese){return bonusMonthPPTotal(mese,Array.isArray(posts)?posts:[]);}
-  function totaleBonusEventoGaleoni(posts,mese){return bonusMonthGTotal(mese,Array.isArray(posts)?posts:[]);}
-  function bonusEventPostCount(posts,mese){
-    posts=Array.isArray(posts)?posts:[];
-    var bonuses=activeMonthBonuses(mese),seen={};
-    for(var b=0;b<bonuses.length;b++){
-      for(var i=0;i<posts.length;i++){if(postEligibleForBonus(posts[i],bonuses[b]))seen[i]=true;}
-    }
-    return Object.keys(seen).length;
-  }
-  function validPostCount(posts){var c=0;posts=Array.isArray(posts)?posts:[];for(var i=0;i<posts.length;i++){if(posts[i]&&isValidPostLink(posts[i].link))c++;}return c;}
-  function narratorBonusValueSummary(b,posts){
-    var parts=[];
-    if(b.modalita==="posts"&&b.valore==="variable"){
-      parts.push("variabile "+(b.variabileSu==="pp"?"PP":(b.variabileSu==="galeoni"?"Galeoni":"Altro")));
-      var pp=0,g=0;
-      for(var i=0;i<posts.length;i++){pp+=bonusPPOnPost(b,posts[i]);g+=bonusGOnPost(b,posts[i]);}
-      if(pp>0)parts.push("+"+pp+" PP nel mese");
-      if(g>0)parts.push("+"+g+" G nel mese");
-    }else{
-      if(b.pp>0)parts.push("+"+b.pp+" PP "+(b.modalita==="all"?"per post":"per utilizzo"));
-      if(b.galeoni>0)parts.push("+"+b.galeoni+" G "+(b.modalita==="all"?"per post":"per utilizzo"));
-      if(b.altro)parts.push("Altro: "+b.altro);
-    }
-    if(!parts.length)parts.push("nessun valore economico");
-    return parts.join(" · ");
-  }
-  function narratorUsageItems(b,posts){
-    var out=[],localNo=0;
-    if(!b||b.modalita!=="posts"){return out;}
-    for(var i=0;i<posts.length;i++){
-      var post=posts[i];
-      if(!post||!isValidPostLink(post.link)){continue;}
-      localNo++;
-      if(!postUsesLimitedBonus(post,b)){continue;}
-      var current=Math.max(0,parseInt(b.usatiIniziali,10)||0)+bonusPostsUsedThisMonth(b,posts,i+1);
-      var max=Math.max(0,parseInt(b.maxUtilizzi,10)||0);
-      out.push({
-        post:post,localNo:localNo,current:current,max:max,
-        kind:(max>0&&current>=max)?"exhausted":"update"
-      });
-    }
-    return out;
-  }
-  function narratorOverallUsageState(b,posts){
-    if(!b||b.modalita!=="posts"){return null;}
-    var used=bonusUsedThisMonth(b,posts);
-    if(used<=0){return null;}
-    var start=Math.max(0,parseInt(b.usatiIniziali,10)||0),current=start+used,max=Math.max(0,parseInt(b.maxUtilizzi,10)||0);
-    if(max>0&&current>=max){return {kind:"exhausted",text:"TERMINATO — "+current+"/"+max+" · rimuovere dal Bagaglio"};}
-    if(max>0){return {kind:"update",text:"AGGIORNARE — "+start+"/"+max+" → "+current+"/"+max+" nel Bagaglio"};}
-    return {kind:"update",text:"AGGIORNARE — "+current+" utilizzi"};
-  }
-  function narratorCreditObjectName(b,idx){
-    var name=String(b&&b.descrizione||"").trim();
-    return name||"Premio FT";
-  }
-  function narratorCreditUsageActions(mese,posts){
-    var bonuses=activeMonthBonuses(mese),out=[];
+  function narratorBagWarnings(mese,posts){
+    var bonuses=narratorAllBonuses(mese),out=[];
     for(var i=0;i<bonuses.length;i++){
       var b=bonuses[i];
-      if((b.modalita!=="posts"&&b.modalita!=="manual")||!(b.maxUtilizzi>0)){continue;}
-      var used=bonusUsedThisMonth(b,posts);
-      if(used<=0){continue;}
-      var start=Math.max(0,parseInt(b.usatiIniziali,10)||0);
-      var current=bonusCurrentUses(b,posts);
-      var name=narratorCreditObjectName(b,i);
+      if((b.modalita!=="posts"&&b.modalita!=="manual")||!(b.maxUtilizzi>0))continue;
+      var used=narratorBonusCount(posts,b);
+      if(used<=0)continue;
+      var current=b.usatiIniziali+used;
       if(current>=b.maxUtilizzi){
-        out.push("rimuovere "+name);
+        out.push({kind:"remove",text:narratorBonusName(b,i)+": "+current+"/"+b.maxUtilizzi+" — RIMUOVERE DAL BAGAGLIO IN SCHEDA PG."});
       }else{
-        out.push(name+" "+start+"/"+b.maxUtilizzi+" → "+current+"/"+b.maxUtilizzi);
+        out.push({kind:"update",text:narratorBonusName(b,i)+": aggiornare gli utilizzi nel Bagaglio da "+b.usatiIniziali+"/"+b.maxUtilizzi+" a "+current+"/"+b.maxUtilizzi+"."});
       }
     }
     return out;
   }
-  function buildNarratorBonusSummary(mese,posts){
-    var bonuses=activeMonthBonuses(mese);
-    if(!bonuses.length){return null;}
-    var wrap=el("div","narrator-cb-summary");
-    wrap.appendChild(el("div","cb-notes-title","Bonus e utilizzi"));
-    for(var i=0;i<bonuses.length;i++){
-      var b=bonuses[i],line=el("div","narrator-bonus-line");
-      line.appendChild(el("span","narrator-bonus-name",bonusDisplayName(b,i)+": "));
-      line.appendChild(document.createTextNode(narratorBonusValueSummary(b,posts)));
-      if(b.modalita==="all"){
-        line.appendChild(document.createTextNode(" · "+validPostCount(posts)+" post"));
-      }else if(b.modalita==="posts"){
-        var current=bonusCurrentUses(b,posts);
-        line.appendChild(document.createTextNode(" · Utilizzi "+current+(b.maxUtilizzi>0?"/"+b.maxUtilizzi:"")));
-        var state=narratorOverallUsageState(b,posts);
-        if(state){
-          line.appendChild(document.createTextNode(" · "));
-          line.appendChild(el("span","narrator-usage-state "+state.kind,state.text));
-        }
-        var items=narratorUsageItems(b,posts);
-        if(items.length){
-          var list=el("div","narrator-usage-list");
-          for(var u=0;u<items.length;u++){
-            var it=items[u],isLast=(u===items.length-1);
-            var baseLabel="Post "+it.localNo+" · "+(it.max>0?(it.current+"/"+it.max):it.current);
-            var item;
-            if(isLast){
-              var label=baseLabel+" — "+(it.kind==="exhausted"?"TERMINATO":"AGGIORNARE");
-              item=el("span","narrator-usage-badge "+it.kind,label);
-            }else{
-              item=el("span","narrator-usage-plain",baseLabel);
-            }
-            list.appendChild(item);
-            var ico=makeLinkIcon(it.post.link,"Apri il Post di questo utilizzo");if(ico)list.appendChild(ico);
-          }
-          line.appendChild(list);
-        }
-      }else{
-        line.appendChild(document.createTextNode(" · Utilizzi manuali "+bonusCurrentUses(b,posts)+(b.maxUtilizzi>0?"/"+b.maxUtilizzi:"")));
-      }
-      wrap.appendChild(line);
-    }
-    return wrap;
-  }
+  function validPostCount(posts){var c=0;posts=Array.isArray(posts)?posts:[];for(var i=0;i<posts.length;i++){if(posts[i]&&isValidPostLink(posts[i].link))c++;}return c;}
   function normalizeMonthName(nome){
     return String(nome || "").trim().replace(/\s+/g," ").toLocaleLowerCase("it-IT");
   }
@@ -1107,24 +986,58 @@
     var p = el("div", "panel");
     p.appendChild(el("h2", null, "Personaggi registrati"));
 
+    var dashboardActions=el("div","dashboard-actions");
     var btnLogout = el("button", "action small", "Esci");
     btnLogout.addEventListener(EV, function(){ window.fbSignOut(); });
-    p.appendChild(btnLogout);
+    dashboardActions.appendChild(btnLogout);
 
     var btnRefresh = el("button", "action small", "Aggiorna elenco");
-    btnRefresh.style.marginLeft = "8px";
     btnRefresh.addEventListener(EV, function(){
       btnRefresh.textContent = "Aggiornamento\u2026";
       caricaTutto(function(){ renderApp(); });
     });
-    p.appendChild(btnRefresh);
+    dashboardActions.appendChild(btnRefresh);
+    p.appendChild(dashboardActions);
 
     p.appendChild(el("div", "divider"));
     p.appendChild(el("div","guide-text","<b>Gestione PG:</b> usa «Archivio periodico e pulizia database» per copiare sul Forum i dati conclusi e poi rimuoverli in sicurezza da Firebase. «Archivia PG» congela invece l’intero Personaggio senza cancellarlo; da lì puoi generare il backup definitivo prima di eliminarlo. L’eliminazione definitiva rimuove i dati di gioco ma conserva un marcatore tecnico minimo che impedisce di ricreare accidentalmente lo stesso PG. L’archiviazione semplice non riduce lo spazio occupato."));
-    var allPg=datiAdulti.concat(datiStudenti), totalBytes=0, maxBytes=0, maxPg="";for(var dh=0;dh<allPg.length;dh++){var b=stateSizeBytes(allPg[dh].data);totalBytes+=b;if(b>maxBytes){maxBytes=b;maxPg=allPg[dh].id;}}
-    var health=el("div","db-health");health.appendChild(el("div",null,"PG nel database<br><b>"+allPg.length+"</b>"));health.appendChild(el("div",null,"Dati PG stimati<br><b>"+sizeLabel(totalBytes)+"</b>"));var hc=el("div",maxBytes>850000?"db-size-danger":(maxBytes>650000?"db-size-warn":""),"PG più pesante<br><b>"+(maxPg||"—")+" · "+firestoreDocUsage(maxBytes)+"</b>");health.appendChild(hc);p.appendChild(health);p.appendChild(el("p","small-note","La stima «Dati PG» riguarda i documenti principali dei Personaggi. Registro modifiche, snapshot e accrediti sono documenti Firebase separati e non rientrano in questo totale."));if(maxBytes>650000){p.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ Conviene effettuare una pulizia periodica del PG più pesante prima che il singolo documento si avvicini al limite Firestore."));}
+    var allPg=datiAdulti.concat(datiStudenti), maxBytes=0, maxPg="";
+    for(var dh=0;dh<allPg.length;dh++){
+      var b=stateSizeBytes(allPg[dh].data);
+      if(b>maxBytes){maxBytes=b;maxPg=allPg[dh].id;}
+    }
 
-    var searchBox=el("div","guide-text");var searchLabel=el("label",null,"Cerca PG");var searchInput=el("input");searchInput.type="search";searchInput.placeholder="Scrivi nome o cognome…";searchInput.value=filtroPg;searchInput.style.marginTop="6px";searchLabel.appendChild(searchInput);searchBox.appendChild(searchLabel);p.appendChild(searchBox);
+    /* Il numero totale dei PG e la somma dei soli documenti principali
+       non sono metriche operative utili. Manteniamo invece il limite
+       realmente controllabile: 1 MiB per singolo documento Firestore. */
+    var docLimitBytes=1024*1024;
+    var freeDocBytes=Math.max(0,docLimitBytes-maxBytes);
+    var hcClass=maxBytes>850000?"db-size-danger":(maxBytes>650000?"db-size-warn":"");
+    var hc=el("div",hcClass,
+      "PG più pesante<br><b>"+(maxPg||"—")+" · "+firestoreDocUsage(maxBytes)+"</b>"+
+      "<span class=\"db-free-space\">Spazio residuo nel documento: ~"+sizeLabel(freeDocBytes)+"</span>"
+    );
+    var health=el("div","db-health");
+    health.appendChild(hc);
+    p.appendChild(health);
+
+    p.appendChild(el("p","small-note","Questo indicatore confronta il documento principale del PG più pesante con il limite di 1024 KB del singolo documento. Registro modifiche, snapshot e accrediti sono documenti Firebase separati e non consumano questo stesso limite."));
+    if(maxBytes>650000){
+      p.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ Conviene effettuare una pulizia periodica del PG più pesante prima che il singolo documento si avvicini al limite Firestore."));
+    }
+
+    var searchBox=el("div","guide-text dashboard-search");
+    searchBox.appendChild(el("div","dashboard-search-title","<b>Cerca PG</b>"));
+    var searchField=el("div","dashboard-search-field");
+    var searchLabel=el("label",null,"Scrivi nome o cognome");
+    var searchInput=el("input");
+    searchInput.type="search";
+    searchInput.placeholder="Scrivi nome o cognome…";
+    searchInput.value=filtroPg;
+    searchField.appendChild(searchLabel);
+    searchField.appendChild(searchInput);
+    searchBox.appendChild(searchField);
+    p.appendChild(searchBox);
     var matchPg=function(x){var q=String(filtroPg||"").trim().toLowerCase();return !q||String(x.id||"").toLowerCase().indexOf(q)>=0;};
     var adultiAttiviAll=datiAdulti.filter(function(x){return !x.data._archiviato;}), studentiAttiviAll=datiStudenti.filter(function(x){return !x.data._archiviato;}), adultiArchAll=datiAdulti.filter(function(x){return !!x.data._archiviato;}), studentiArchAll=datiStudenti.filter(function(x){return !!x.data._archiviato;});
     var adultiAttivi=adultiAttiviAll.filter(matchPg), studentiAttivi=studentiAttiviAll.filter(matchPg), adultiArch=adultiArchAll.filter(matchPg), studentiArch=studentiArchAll.filter(matchPg);
@@ -1183,7 +1096,7 @@
 
     var dSel=el("div");dSel.appendChild(el("label",null,"Mese del riepilogo"));var sel=el("select");for(var mi=0;mi<monthNames.length;mi++){var o=el("option",null,monthNames[mi]);o.value=monthNames[mi];if(monthNames[mi]===meseRiepilogoSelezionato)o.selected=true;sel.appendChild(o);}sel.addEventListener("change",function(){meseRiepilogoSelezionato=sel.value;renderRiepilogoMensile(container);});dSel.appendChild(sel);container.appendChild(dSel);
 
-    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[];
+    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],bagLines=[],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[];
     for(var j=0;j<entries.length;j++){
       var entry=entries[j],mesiPg=entry.pg.data.MESI||[],matches=[];
       for(var mm=0;mm<mesiPg.length;mm++){if(isImportedStudentMonth(mesiPg[mm]))continue;var mn=normalizeMonthName(mesiPg[mm].nome);if(mn&&mn===selectedMonthNorm)matches.push(mesiPg[mm]);}
@@ -1191,6 +1104,15 @@
       var mese=matches.length===1?matches[0]:null,cache=accreditiCache[entry.coll+"__"+entry.pg.id]||{},record=findAppliedRecordForMonth(cache,mese,selectedMonthNorm);
       var accredited=mese?(!!cache[mese.id]||!!record):!!record;
       if(!accredited){notProcessed.push(entry.pg.id);continue;}
+
+      if(mese){
+        var postsBag=Array.isArray(mese.posts)?mese.posts:[];
+        var pgBagWarnings=narratorBagWarnings(mese,postsBag);
+        for(var pbw=0;pbw<pgBagWarnings.length;pbw++){
+          bagLines.push("<b>"+entry.pg.id+":</b> "+pgBagWarnings[pbw].text);
+        }
+      }
+
       if(record){lines.push(registryLineFromRecord(entry.pg.id,record));count++;continue;}
       if(!mese)continue;
       var posts=Array.isArray(mese.posts)?mese.posts:[],g=totaleG(entry.tipo,posts,mese),pp=totalePP(posts,mese),riga="<b>"+entry.pg.id+":</b> +"+g+" Galeoni";if(pp>0)riga+=", +"+pp+" PP";riga+=" <i>(accredito precedente al calcolatore Staff)</i>";lines.push(riga);count++;
@@ -1198,6 +1120,15 @@
     if(ambiguousPg.length)container.appendChild(el("div","warning-alert","⚠ Esclusi dal riepilogo perché hanno più Mesi chiamati «"+meseRiepilogoSelezionato+"»: <b>"+ambiguousPg.join(", ")+"</b>. Rinomina una delle vecchie voci nel relativo Tracker e poi aggiorna il pannello."));
     if(notProcessed.length)container.appendChild(el("p","small-note","Non ancora processati per "+meseRiepilogoSelezionato+": "+notProcessed.join(", ")+". I PG senza CB possono essere registrati come 0 post dalla sezione «Valori correnti da Scheda PG»."));
     if(count===0){container.appendChild(el("p","small-note","Nessun PG risulta ancora accreditato senza ambiguità per "+meseRiepilogoSelezionato+"."));return;}
+
+    lines.push("");
+    lines.push("<b>Oggetti / Bonus usati — aggiornamenti Scheda PG:</b>");
+    if(bagLines.length){
+      for(var bli=0;bli<bagLines.length;bli++){lines.push(bagLines[bli]);}
+    }else{
+      lines.push("Nessun Bonus a utilizzi da aggiornare o rimuovere dal Bagaglio.");
+    }
+
     var code=el("div","summary-code");code.id="riepilogo-copy-text";code.textContent=lines.join("\n");container.appendChild(code);var btn=el("button","copy-btn","Copia riepilogo del mese");btn.addEventListener("click",function(){copyText(code.textContent,btn);});container.appendChild(btn);
   }
 
@@ -1479,9 +1410,28 @@
     var mesi = pgEntry.data.MESI ? pgEntry.data.MESI : [];
     var summary=el("summary","pg-card-summary");
     summary.appendChild(el("span","pg-card-name",pgEntry.id));
+    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
+      summary.appendChild(el("span","delete-request-badge","⚠ RICHIESTA ELIMINAZIONE"));
+    }
     summary.appendChild(el("span","pg-card-meta",mesi.length+" mesi · ~"+firestoreDocUsage(stateSizeBytes(pgEntry.data))+" · ultima modifica "+fmtDateTime(pgEntry.data&&pgEntry.data._lastModifiedAt)));
     card.appendChild(summary);
     appendLastModification(card,pgEntry.data);
+    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
+      var reqBox=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l'eliminazione da questo Tool.</b><br>Se la richiesta è corretta, usa «Elimina senza esportare» qui sotto. Se invece va ignorata, annullala.");
+      var dismissReq=el("button","action small","Annulla richiesta");
+      dismissReq.type="button";
+      dismissReq.addEventListener(EV,function(){
+        if(!confirm("Annullare la richiesta di eliminazione di "+pgEntry.id+" senza cancellare il PG?"))return;
+        var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";
+        dismissReq.disabled=true;
+        window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){
+          if(ok){caricaTutto(function(){renderApp();});}
+          else{dismissReq.disabled=false;alert("Non è stato possibile annullare la richiesta.");}
+        });
+      });
+      reqBox.appendChild(dismissReq);
+      card.appendChild(reqBox);
+    }
     var duplicateMesiCount = duplicateMonthNameCount(mesi);
     if(duplicateMesiCount){
       card.appendChild(el("div","warning-alert","⚠ Questo PG contiene "+duplicateMesiCount+" Mese/i con nome duplicato già presenti nello storico. I Tracker ora impediscono nuovi duplicati: rinomina una delle vecchie voci per evitare ambiguità nel riepilogo mensile."));
@@ -1534,23 +1484,70 @@
           var gMese = totaleG(tipoPg, postsMese, mese);
           var ppMese = totalePP(postsMese,mese);
           info.appendChild(el("div", "mese-title", nomeLbl + " \u2014 " + postValidiMese + " post \u2014 " + gMese + " G \u2014 " + ppMese + " PP"));
-          var appliedEntryPreview=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome));
-          var isAccreditedPreview=!!accreditiData[mese.id]||!!appliedEntryPreview;
-          if(!isImportedStudentMonth(mese)&&!isAccreditedPreview){
-            var duePartsPreview=[gMese+" G",ppMese+" PP"];
-            var dueAltroPreview=bonusAltroSummary(mese,postsMese);
-            if(dueAltroPreview){duePartsPreview.push("Altro: "+dueAltroPreview);}
-            var currentStaffValuesPreview=(accreditiData._staffState&&accreditiData._staffState.values)||{};
-            var dueSocialPreview=socialLossPartsForSummary(tipoPg,validPostCount(postsMese),currentStaffValuesPreview);
-            if(dueSocialPreview.length){duePartsPreview.push("Parametri Sociali: "+dueSocialPreview.join(", "));}
-            var narratorUsageActions=narratorCreditUsageActions(mese,postsMese);
-            var dueText="DA ACCREDITARE: "+duePartsPreview.join(" · ");
-            if(narratorUsageActions.length){dueText+=" | "+narratorUsageActions.join(" | ");}
-            info.appendChild(el("div","credit-due-badge",dueText));
+          var monthBonuses=narratorAllBonuses(mese);
+          for(var mbi=0;mbi<monthBonuses.length;mbi++){
+            var mb=monthBonuses[mbi],eventLine=el("div","cb-notes"),bonusCount=narratorBonusCount(postsMese,mb),eventParts=[];
+            eventLine.appendChild(el("span","cb-notes-title","Bonus: "));
+            if(mb.modalita==="posts"&&mb.valore==="variable"){
+              var sumPP=0,sumG=0;
+              for(var _mbp=0;_mbp<postsMese.length;_mbp++){sumPP+=narratorBonusPPOnPost(postsMese[_mbp],mb);sumG+=narratorBonusGOnPost(postsMese[_mbp],mb);}
+              eventParts.push("variabile per post su "+(mb.variabileSu==="pp"?"PP":(mb.variabileSu==="galeoni"?"Galeoni":"Altro")));
+              if(sumPP>0)eventParts.push("+"+sumPP+" PP totali");
+              if(sumG>0)eventParts.push("+"+sumG+" G totali");
+            }else{
+              if(mb.pp>0)eventParts.push("+"+mb.pp+" PP/"+(mb.modalita==="all"?"post":"utilizzo"));
+              if(mb.galeoni>0)eventParts.push("+"+mb.galeoni+" G/"+(mb.modalita==="all"?"post":"utilizzo"));
+              if(mb.altro)eventParts.push("Altro: "+mb.altro);
+            }
+            if(!eventParts.length)eventParts.push("nessun valore economico");
+            if(mb.modalita==="all")eventParts.push(bonusCount+"/"+postValidiMese+" post con bonus");
+            else if(mb.maxUtilizzi>0)eventParts.push("utilizzi "+narratorBonusCurrentUses(postsMese,mb)+"/"+mb.maxUtilizzi);
+            else eventParts.push("utilizzi "+bonusCount);
+            eventLine.appendChild(document.createTextNode(narratorBonusName(mb,mbi)+" — "+eventParts.join(" · ")));
+            info.appendChild(eventLine);
+
+            if(mb.modalita==="all"&&bonusCount<postValidiMese){
+              var excluded=el("div","cb-notes");
+              excluded.appendChild(el("span","cb-notes-title","Post esclusi da "+narratorBonusName(mb,mbi)+":"));
+              var anyExcluded=false;
+              for(var ebx=0;ebx<postsMese.length;ebx++){
+                var ebp=postsMese[ebx];
+                if(ebp&&isValidPostLink(ebp.link)&&narratorPostExcluded(ebp,mb)){
+                  anyExcluded=true;var exItem=el("div","cb-note-item");exItem.appendChild(document.createTextNode("Post "+(ebx+1)));
+                  var exIcon=makeLinkIcon(ebp.link,"Apri il post escluso dal bonus");if(exIcon)exItem.appendChild(exIcon);excluded.appendChild(exItem);
+                }
+              }
+              if(anyExcluded)info.appendChild(excluded);
+            }
+
+            if(mb.modalita==="posts"&&mb.valore==="variable"){
+              for(var vr=0;vr<postsMese.length;vr++){
+                var vp=postsMese[vr],rec=narratorUsageRecord(vp,mb);
+                if(!vp||!isValidPostLink(vp.link)||!rec||!rec.used)continue;
+                var rr=el("div","cb-note-item");
+                var res=mb.variabileSu==="pp"?("+"+(parseInt(rec.pp,10)||0)+" PP"):(mb.variabileSu==="galeoni"?("+"+(parseInt(rec.galeoni,10)||0)+" G"):String(rec.altro||""));
+                rr.appendChild(document.createTextNode("Post "+(vr+1)+": "+res+" "));
+                var rollIcon=makeLinkIcon(rec.link,"Apri il tiro del Bonus");if(rollIcon)rr.appendChild(rollIcon);
+                var missingRes=(mb.variabileSu==="pp"&&!((parseInt(rec.pp,10)||0)>0))||(mb.variabileSu==="galeoni"&&!((parseInt(rec.galeoni,10)||0)>0))||(mb.variabileSu==="altro"&&!String(rec.altro||"").trim());
+                if(missingRes||!isValidPostLink(rec.link)){rr.appendChild(el("span","status-pending"," ⚠ "+(missingRes?"risultato ":"")+(missingRes&&!isValidPostLink(rec.link)?"e ":"")+(!isValidPostLink(rec.link)?"link tiro ":"")+"mancante")); }
+                info.appendChild(rr);
+              }
+            }
+          }
+
+          for(var mbiSetup=0;mbiSetup<monthBonuses.length;mbiSetup++){
+            var setupBonus=monthBonuses[mbiSetup];
+            if(setupBonus.modalita==="posts" && (!setupBonus.usatiConfermati || !(setupBonus.maxUtilizzi>0))){
+              info.appendChild(el("div","bag-update-warning",narratorBonusName(setupBonus,mbiSetup)+": stato iniziale del premio incompleto — il PG deve indicare quanti utilizzi risultano già consumati in Scheda PG e il totale previsto."));
+            }
+          }
+          var bagWarnings=narratorBagWarnings(mese,postsMese);
+          for(var bwi=0;bwi<bagWarnings.length;bwi++){
+            info.appendChild(el("div",bagWarnings[bwi].kind==="remove"?"bag-remove-warning":"bag-update-warning",bagWarnings[bwi].text));
           }
 
           var notes = el("div", "cb-notes");
-          notes.appendChild(el("span", "cb-notes-title", "Nota per la CB del mese:"));
+          notes.appendChild(el("span", "cb-notes-title", "Nota:"));
           var haNote = false;
           for(var n=0;n<postsMese.length;n++){
             var nota = postsMese[n] && postsMese[n].nota != null ? String(postsMese[n].nota).trim() : "";
@@ -1574,9 +1571,18 @@
             chk.appendChild(el("span","small-note","📦 Storico importato da Studente — nessun nuovo accredito richiesto"));
           }else{
             var box = el("input"); box.type="checkbox";
-            var appliedEntry=appliedEntryPreview;
-            box.checked = isAccreditedPreview;
+            var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome));
+            box.checked = !!accreditiData[mese.id] || !!appliedEntry;
             var statusLbl = el("span", box.checked ? "status-ok" : "status-pending", box.checked ? "Accreditato" : "Da accreditare");
+            if(!box.checked){
+              var dueParts=[gMese+" G",ppMese+" PP"];
+              var dueAltro=allBonusAltro(mese,postsMese);
+              if(dueAltro){dueParts.push("Altro: "+dueAltro);}
+              var currentStaffValues=(accreditiData._staffState&&accreditiData._staffState.values)||{};
+              var dueSocial=socialLossPartsForSummary(tipoPg,validPostCount(postsMese),currentStaffValues);
+              if(dueSocial.length){dueParts.push("Parametri Sociali: "+dueSocial.join(", "));}
+              info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+dueParts.join(" · ")));
+            }
             box.addEventListener(EV, function(){
               var nuovoValore=box.checked,rk=monthRecordKey(mese),currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;
               box.disabled=true;
