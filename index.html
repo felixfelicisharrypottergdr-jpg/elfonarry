@@ -248,6 +248,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
   import { getFirestore, collection, getDocs, doc, getDoc, setDoc, writeBatch, increment, runTransaction, serverTimestamp, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 
   var firebaseConfig = {
     apiKey: "AIzaSyCvd56bSEL02s2OY2PSk7uyFX-CYRB4Vz0",
@@ -261,6 +262,7 @@
   var fbApp = initializeApp(firebaseConfig);
   var fbDb = getFirestore(fbApp);
   var fbAuth = getAuth(fbApp);
+  var fbFunctions = getFunctions(fbApp, "europe-west1");
   var NARRATOR_UID = "TFgqfVrFLjW5SwqRFXmEi8tDhtM2"; window.NARRATOR_UID=NARRATOR_UID;
   function stableValue(v){
     if(Array.isArray(v)){ return v.map(stableValue); }
@@ -555,6 +557,21 @@
       var cleaned=await finalizeDeletedPgCleanup(personCollection,pgId);
       return {ok:true,cleanupPending:!cleaned};
     }catch(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};}
+  };
+
+  window.fbListGameSessionsAdmin = function(){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.reject(new Error("unauthorized")); }
+    return httpsCallable(fbFunctions, "adminListGameSessions")({}).then(function(res){ return res.data || []; });
+  };
+
+  window.fbResetGamePlayerAccessAdmin = function(code, playerId){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve({ok:false,code:"unauthorized"}); }
+    return httpsCallable(fbFunctions, "adminResetGamePlayerAccess")({code:code,playerId:playerId}).then(function(res){ return res.data || {ok:false}; });
+  };
+
+  window.fbCloseGameSessionAdmin = function(code){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve({ok:false,code:"unauthorized"}); }
+    return httpsCallable(fbFunctions, "adminCloseGameSession")({code:code}).then(function(res){ return res.data || {ok:false}; });
   };
 
   window.fbReady = true;
@@ -1022,6 +1039,64 @@
     }).catch(function(e){console.error(e);alert("Impossibile caricare l’elenco dei PG. Controlla la connessione e le regole Firebase.");});
   }
 
+  function appendGameAdminPanel(parent){
+    var det=el("details","history-tools");
+    det.appendChild(el("summary",null,"🎲 Giochi Magici — Gestione accessi"));
+    var holder=el("div");
+    holder.appendChild(el("p","small-note","Qui puoi intervenire soltanto sugli accessi alle partite private. Il reset non mostra né modifica carte, bluff, distribuzioni o storico della partita."));
+    det.appendChild(holder);
+    var loaded=false;
+
+    function tipoGioco(v){return v==="sparaschiocco"?"Sparaschiocco":(v==="trionfo"?"Trionfo":(v==="knocker"?"Knocker":v));}
+    function load(){
+      holder.innerHTML="Caricamento partite…";
+      window.fbListGameSessionsAdmin().then(function(list){
+        holder.innerHTML="";
+        holder.appendChild(el("p","small-note","Se un player dimentica la parola d’ordine, usa «Azzera parola d’ordine». Al prossimo accesso potrà sceglierne una nuova per quella stessa partita; la sua mano rimane invariata."));
+        if(!list.length){holder.appendChild(el("p","small-note","Nessuna partita privata registrata."));return;}
+        for(var i=0;i<list.length;i++){
+          (function(game){
+            var card=el("div","card");
+            card.appendChild(el("h3",null,tipoGioco(game.gameType)+" — "+game.code));
+            card.appendChild(el("p","small-note","Stato: "+(game.status||"—")));
+            var players=Array.isArray(game.players)?game.players:[];
+            for(var p=0;p<players.length;p++){
+              (function(pg){
+                var row=el("div","mese-row");
+                var info=el("div","mese-info");
+                info.appendChild(el("div","mese-title",pg.name));
+                info.appendChild(el("div","small-note",pg.claimed?"Parola d’ordine impostata":"Accesso non ancora impostato"));
+                row.appendChild(info);
+                var reset=el("button","action danger small","Azzera parola d’ordine");
+                reset.disabled=!pg.claimed;
+                reset.addEventListener(EV,function(){
+                  if(!confirm("Azzerare la parola d’ordine di "+pg.name+" nella partita "+game.code+"?\n\nCarte, bluff e stato della partita non verranno modificati.")){return;}
+                  reset.disabled=true;
+                  window.fbResetGamePlayerAccessAdmin(game.code,pg.id).then(function(res){
+                    if(res&&res.ok){loaded=false;load();}else{reset.disabled=false;alert("Reset non riuscito.");}
+                  }).catch(function(e){console.error(e);reset.disabled=false;alert("Reset non riuscito.");});
+                });
+                row.appendChild(reset);card.appendChild(row);
+              })(players[p]);
+            }
+            if(game.status!=="closed"){
+              var close=el("button","action archive small","Chiudi partita");
+              close.addEventListener(EV,function(){
+                if(!confirm("Chiudere la partita "+game.code+"? Gli accessi non potranno più essere usati per giocare.")){return;}
+                close.disabled=true;
+                window.fbCloseGameSessionAdmin(game.code).then(function(res){if(res&&res.ok){loaded=false;load();}else{close.disabled=false;alert("Chiusura non riuscita.");}}).catch(function(e){console.error(e);close.disabled=false;alert("Chiusura non riuscita.");});
+              });
+              card.appendChild(close);
+            }
+            holder.appendChild(card);
+          })(list[i]);
+        }
+      }).catch(function(e){console.error(e);holder.innerHTML="Impossibile caricare le partite private. Verifica che le Cloud Functions dei Giochi Magici siano state distribuite.";loaded=false;});
+    }
+    det.addEventListener("toggle",function(){if(det.open&&!loaded){loaded=true;load();}});
+    parent.appendChild(det);
+  }
+
   function renderDashboard(container){
     var p = el("div", "panel");
     p.appendChild(el("h2", null, "Personaggi registrati"));
@@ -1038,6 +1113,7 @@
     });
     dashboardActions.appendChild(btnRefresh);
     p.appendChild(dashboardActions);
+    appendGameAdminPanel(p);
 
     p.appendChild(el("div", "divider"));
     p.appendChild(el("div","guide-text","<b>Gestione PG:</b> usa «Archivio periodico e pulizia database» per copiare sul Forum i dati conclusi e poi rimuoverli in sicurezza da Firebase. «Archivia PG» congela invece l’intero Personaggio senza cancellarlo; da lì puoi generare il backup definitivo prima di eliminarlo. L’eliminazione definitiva rimuove i dati di gioco ma conserva un marcatore tecnico minimo che impedisce di ricreare accidentalmente lo stesso PG. L’archiviazione semplice non riduce lo spazio occupato."));
