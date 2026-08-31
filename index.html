@@ -217,6 +217,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v70 - Prestigio Adulti: +1 con 4+ post fino alla soglia 71; 0–3 post = −1 */
   /* v69 - Bonus «Tutti i post»: nessuna esclusione per singolo post */
   /* v68 - PP legacy dei singoli post ignorati; valgono solo i Bonus correnti */
   /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
@@ -857,7 +858,7 @@
       {key:"galeoni",label:"Galeoni",step:1,min:0,kind:"resource",required:true},
       {key:"pp",label:"PP posseduti",step:1,min:0,kind:"resource",required:true},
       {key:"popolarita",label:"Popolarità",step:.5,kind:"social",required:true},
-      {key:"prestigio",label:"Prestigio",step:.5,min:0,max:100,kind:"social",required:false},
+      {key:"prestigio",label:"Prestigio",step:.5,min:0,max:100,kind:"social",required:true},
       {key:"virtuosi",label:"Punti Virtuosi",step:.5,min:0,max:30,kind:"social",required:true},
       {key:"sinistri",label:"Punti Sinistri",step:.5,min:0,max:30,kind:"social",required:true}
     ];}
@@ -875,21 +876,28 @@
   function fmtStaffNum(v){if(v===null||v===undefined||!Number.isFinite(Number(v)))return "—";var n=Number(v);return n.toLocaleString("it-IT",{maximumFractionDigits:2,minimumFractionDigits:(Math.abs(n%1)>.0001?1:0)});}
   function fmtSigned(v){var n=Number(v)||0;if(Math.abs(n)<.00001)return "0";return (n>0?"+":"−")+fmtStaffNum(Math.abs(n));}
   function monthlySocialDecay(postCount){var n=Math.max(0,parseInt(postCount,10)||0);return n<=3?-1:(n<=9?-.5:0);}
+  function monthlyPrestigeActivity(postCount,beforePrestigio){
+    var n=Math.max(0,parseInt(postCount,10)||0),b=optionalNum(beforePrestigio);
+    if(b===null)return 0;
+    if(n<=3)return -1;
+    if(b>=71)return 0;
+    return Math.max(0,Math.min(1,71-b));
+  }
   function socialLossPartsForSummary(tipo,postCount,before){
     var decay=monthlySocialDecay(postCount),parts=[];
-    if(decay>=0){return parts;}
     var defs=staffFieldDefs(tipo),vals=normalizeStaffValues(tipo,before||{});
     for(var i=0;i<defs.length;i++){
       var d=defs[i];
       if(d.kind!=="social"){continue;}
       var b=optionalNum(vals[d.key]);
       if(b===null){continue;}
-      var a=b+decay;
+      var automatic=(tipo==="adulto"&&d.key==="prestigio")?monthlyPrestigeActivity(postCount,b):decay;
+      var a=b+automatic;
       if(Number.isFinite(d.min))a=Math.max(d.min,a);
       if(Number.isFinite(d.max))a=Math.min(d.max,a);
       a=Math.round(a*100)/100;
       var delta=Math.round((a-b)*100)/100;
-      if(delta<0){parts.push(fmtSigned(delta)+" "+d.label);}
+      if(Math.abs(delta)>.00001){parts.push(fmtSigned(delta)+" "+d.label);}
     }
     return parts;
   }
@@ -901,9 +909,9 @@
   function findAppliedRecordEntryForMonth(cache,mese,monthNorm){var months=cache&&cache._staffMonths?cache._staffMonths:{};if(mese){var directKey=monthRecordKey(mese),r=months[directKey];if(r&&r.applied!==false&&(!r.monthName||normalizeMonthName(r.monthName)===monthNorm))return {key:directKey,record:r};}var keys=Object.keys(months);for(var i=0;i<keys.length;i++){var rr=months[keys[i]];if(rr&&rr.applied!==false&&normalizeMonthName(rr.monthName)===monthNorm)return {key:keys[i],record:rr};}return null;}
   function findAppliedRecordForMonth(cache,mese,monthNorm){var e=findAppliedRecordEntryForMonth(cache,mese,monthNorm);return e?e.record:null;}
   function computeStaffMonth(tipo,postCount,earnedG,earnedPP,before,extra,monthName,source,meseId){
-    before=normalizeStaffValues(tipo,before||{});extra=extra||{};var defs=staffFieldDefs(tipo),decay=monthlySocialDecay(postCount),after={};
-    for(var i=0;i<defs.length;i++){var d=defs[i],b=before[d.key];if(b===null){after[d.key]=null;continue;}var x=optionalNum(extra[d.key]);if(x===null)x=0;var delta=x;if(d.key==="galeoni")delta+=Number(earnedG)||0;else if(d.key==="pp")delta+=Number(earnedPP)||0;else if(d.kind==="social")delta+=decay;var val=b+delta;if(Number.isFinite(d.min))val=Math.max(d.min,val);if(Number.isFinite(d.max))val=Math.min(d.max,val);after[d.key]=Math.round(val*100)/100;}
-    return {tipo:tipo,monthName:canonicalMonthLabel(monthName),monthNorm:normalizeMonthName(monthName),monthOrder:monthKey(monthName),source:source||"tracker",meseId:meseId==null?"":String(meseId),postCount:Math.max(0,parseInt(postCount,10)||0),earnedG:Number(earnedG)||0,earnedPP:Number(earnedPP)||0,decay:decay,before:before,extra:normalizeStaffExtras(tipo,extra),after:after};
+    before=normalizeStaffValues(tipo,before||{});extra=extra||{};var defs=staffFieldDefs(tipo),decay=monthlySocialDecay(postCount),prestigeActivity=(tipo==="adulto"?monthlyPrestigeActivity(postCount,before.prestigio):decay),after={};
+    for(var i=0;i<defs.length;i++){var d=defs[i],b=before[d.key];if(b===null){after[d.key]=null;continue;}var x=optionalNum(extra[d.key]);if(x===null)x=0;var delta=x;if(d.key==="galeoni")delta+=Number(earnedG)||0;else if(d.key==="pp")delta+=Number(earnedPP)||0;else if(d.kind==="social")delta+=(tipo==="adulto"&&d.key==="prestigio"?prestigeActivity:decay);var val=b+delta;if(Number.isFinite(d.min))val=Math.max(d.min,val);if(Number.isFinite(d.max))val=Math.min(d.max,val);after[d.key]=Math.round(val*100)/100;}
+    return {tipo:tipo,monthName:canonicalMonthLabel(monthName),monthNorm:normalizeMonthName(monthName),monthOrder:monthKey(monthName),source:source||"tracker",meseId:meseId==null?"":String(meseId),postCount:Math.max(0,parseInt(postCount,10)||0),earnedG:Number(earnedG)||0,earnedPP:Number(earnedPP)||0,decay:decay,prestigeActivity:prestigeActivity,before:before,extra:normalizeStaffExtras(tipo,extra),after:after};
   }
   function recordNet(record,key){if(!record||!record.before||!record.after)return 0;var b=optionalNum(record.before[key]),a=optionalNum(record.after[key]);return b===null||a===null?0:Math.round((a-b)*100)/100;}
   function preservedValuesAfterRevoke(tipo,record,current){
@@ -1471,15 +1479,15 @@
   function createNumberInput(def,value){var inp=el("input");inp.type="number";inp.step=String(def.step||1);if(Number.isFinite(def.min))inp.min=String(def.min);if(Number.isFinite(def.max))inp.max=String(def.max);if(value!==null&&value!==undefined&&Number.isFinite(Number(value)))inp.value=String(value);return inp;}
   function readInputsByDefs(defs,inputs){var o={};for(var i=0;i<defs.length;i++)o[defs[i].key]=optionalNum(inputs[defs[i].key]&&inputs[defs[i].key].value);return o;}
   function makeExtraInputs(tipo){var defs=staffFieldDefs(tipo),wrap=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,(d.kind==="resource"?"Extra ":"Variazione extra ")+d.label+" (+/−)");var inp=createNumberInput({step:d.step},0);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);wrap.appendChild(cell);}return {wrap:wrap,inputs:inputs};}
-  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";holder.appendChild(el("span","calc-line","Post validi: <b>"+record.postCount+"</b> · perdita automatica Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b> (Dialettica esclusa)"));holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?record.decay:(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
+  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · variazione automatica altri Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b> (Dialettica esclusa)";if(tipo==="adulto"){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
   function applyErrorMessage(code){if(code==="stale-values")return "I valori correnti non coincidono più con quelli usati per questo calcolo. Ricarica il pannello e ricontrolla i valori prima di riprovare.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Correggi prima manualmente i valori correnti se devi ricostruire lo storico.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
   function appendStaffLedger(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",det=el("details","staff-ledger"),sum=el("summary",null,"📊 Valori correnti da Scheda PG e calcolo accrediti");det.appendChild(sum);
     det.appendChild(el("p","small-note","Inserisci i valori presenti in Scheda PG solo la prima volta. Galeoni e PP posseduti sono obbligatori: se il PG non possiede PP, inserisci 0. Dopo ogni accredito il pannello li aggiorna automaticamente e li userà come base del mese successivo. Modificali manualmente soltanto se la Scheda cambia per operazioni avvenute fuori da questo flusso. I Tracker dei player ricevono automaticamente i nuovi Parametri Sociali dopo un nuovo accredito e richiedono una verifica all’apertura del mese successivo; eventuali modifiche esterne possono comunque essere corrette manualmente dal player. La Dialettica non compare perché non subisce la perdita mensile automatica."));
-    det.appendChild(el("div","calc-rule","Regola mensile automatica: <b>0–3 post = −1</b> · <b>4–9 post = −0,5</b> · <b>10+ post = nessuna perdita</b> su tutti i Parametri Sociali gestiti qui. <b>Negli Adulti comprende anche il Prestigio, se il PG lo possiede.</b> Dialettica esclusa."));
+    det.appendChild(el("div","calc-rule","Regola mensile automatica: per Popolarità e Punti Virtuosi/Sinistri <b>0–3 post = −1</b> · <b>4–9 post = −0,5</b> · <b>10+ post = nessuna variazione</b>. Per il <b>Prestigio degli Adulti</b>: <b>0–3 post = −1</b>; con <b>4+ post = +1</b> soltanto se il valore di partenza è inferiore a 71, senza superare 71 tramite questo bonus. Dialettica esclusa."));
     var state=accreditiData._staffState||{},values=normalizeStaffValues(tipo,state.values||{}),defs=staffFieldDefs(tipo),ready=staffValuesReady(tipo,values),status=el("div",ready.ok?"staff-value-ok":"staff-value-missing",ready.ok?"✓ Valori di base configurati":"⚠ Prima configurazione necessaria: "+ready.missing.join(", "));det.appendChild(status);
     var grid=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,d.label+(d.required?"":" (facoltativo)")),inp=createNumberInput(d,values[d.key]);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);grid.appendChild(cell);}det.appendChild(grid);
-    if(tipo==="adulto")det.appendChild(el("p","small-note","Prestigio: lascia vuoto soltanto se il PG svolge un Mestiere Libero. Per tutti gli altri Adulti, <b>la perdita mensile dovuta ai Post viene applicata automaticamente anche al Prestigio</b>: 0–3 post = −1, 4–9 post = −0,5, 10+ post = nessuna perdita. Nel campo extra va inserito soltanto un eventuale bonus/malus di Prestigio dovuto ad altre cause (Quest, Eventi, decisioni del Narratore, correzioni). Il pannello applica il limite generale 0–100. Punti Virtuosi/Sinistri restano tra 0 e 30; gli eventuali limiti più restrittivi dovuti all’Allineamento vanno comunque verificati dallo Staff."));
+    if(tipo==="adulto")det.appendChild(el("p","small-note","Prestigio: per gli Adulti viene gestito automaticamente anche in base all’attività mensile. Con 0–3 post perde −1; con almeno 4 post guadagna +1 finché il valore di partenza è inferiore a 71. Il bonus da attività non può portarlo oltre 71; da 71 in poi può crescere soltanto tramite meriti ONGame. Nel campo extra inserisci eventuali bonus/malus di Prestigio dovuti ad altre cause (FantaWiz, Quest, Eventi, decisioni del Narratore, correzioni): questi possono portarlo oltre 71, sempre entro il limite generale 0–100. Punti Virtuosi/Sinistri restano tra 0 e 30; gli eventuali limiti più restrittivi dovuti all’Allineamento vanno comunque verificati dallo Staff."));
     var actions=el("div","staff-actions"),save=el("button","action small","Salva valori attuali");actions.appendChild(save);det.appendChild(actions);
     save.addEventListener(EV,function(){var next=readInputsByDefs(defs,inputs),r=staffValuesReady(tipo,next);if(!r.ok){alert("Compila almeno: "+r.missing.join(", ")+".");return;}save.disabled=true;window.fbSaveStaffValues(accreditiCollection,pgEntry.id,tipo,normalizeStaffValues(tipo,next),values).then(function(res){if(res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{save.disabled=false;alert(applyErrorMessage(res.code));}});});
 
