@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- v26 - gestione password definitive degli Elfi, 01/09/2026 -->
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -235,6 +236,13 @@
     background-position:center top, center top !important;
     background-attachment:scroll, scroll !important;
   }
+
+  .elfo-password-panel{margin-top:14px}
+  .elfo-password-row{display:grid;grid-template-columns:minmax(150px,1.4fr) 90px minmax(160px,1fr) auto;gap:8px;align-items:end;padding:9px 0;border-top:1px dashed rgba(185,166,108,.75)}
+  .elfo-password-row:first-child{border-top:0}.elfo-password-row .action{margin:0}.elfo-password-secret{font-family:monospace;letter-spacing:.03em;overflow-wrap:anywhere}
+  .elfo-password-create{display:grid;grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) auto;gap:8px;align-items:end}
+  .elfo-password-create .action{margin:0}.elfo-password-status{font-size:.72rem;color:#6b5a3c}.elfo-password-missing{color:#8a2f2f;font-weight:700}
+  @media(max-width:700px){.elfo-password-row{grid-template-columns:1fr}.elfo-password-create{grid-template-columns:1fr}}
 
 </style>
 </head>
@@ -477,6 +485,38 @@
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.reject(new Error("unauthorized")); }
     return getDoc(doc(fbDb, collectionName, pgId)).then(function(snap){return snap.exists()?snap.data():null;});
   };
+
+
+  window.fbListElfoPasswords = function(){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.reject(new Error("unauthorized")); }
+    return Promise.all([
+      getDocs(collection(fbDb,"elfo_passwords_adulti")),
+      getDocs(collection(fbDb,"elfo_passwords_studenti"))
+    ]).then(function(res){
+      var out={adulto:{},studente:{}};
+      res[0].forEach(function(d){out.adulto[d.id]=d.data()||{};});
+      res[1].forEach(function(d){out.studente[d.id]=d.data()||{};});
+      return out;
+    });
+  };
+
+  window.fbSetElfoPassword = function(tipo, pgId, password){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve({ok:false,code:"unauthorized"}); }
+    tipo=tipo==="studente"?"studente":"adulto";
+    var personCollection=tipo==="adulto"?"personaggi_adulti":"personaggi_studenti";
+    var passCollection=tipo==="adulto"?"elfo_passwords_adulti":"elfo_passwords_studenti";
+    var pgRef=doc(fbDb,personCollection,pgId),passRef=doc(fbDb,passCollection,pgId),auditRef=doc(collection(fbDb,personCollection,pgId,"audit"));
+    return runTransaction(fbDb,async function(tx){
+      var pgSnap=await tx.get(pgRef),passSnap=await tx.get(passRef);
+      if(!pgSnap.exists())throw new Error("missing-pg");
+      var cur=pgSnap.data()||{};if(cur._deleted)throw new Error("deleted-pg");
+      if(passSnap.exists())throw new Error("password-already-set");
+      var pw=String(password||"");if(!pw||pw.length>256)throw new Error("invalid-password");
+      tx.set(passRef,{pgId:pgId,tipo:tipo,password:pw,createdAt:serverTimestamp(),createdByUid:NARRATOR_UID});
+      tx.set(pgRef,{_editPasswordConfigured:true,_dbRevision:(parseInt(cur._dbRevision,10)||0)+1,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastSessionId:""},{merge:true});
+      tx.set(auditRef,narratorEvent(pgId,"Accesso Elfo","Impostata la password definitiva di modifica",[{path:"_editPasswordConfigured",before:cur._editPasswordConfigured===true,after:true}]));
+    }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
   window.fbListAudit = function(collectionName,pgId,howMany){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){return Promise.reject(new Error("unauthorized"));}
     var q=query(collection(fbDb,collectionName,pgId,"audit"),orderBy("at","desc"),limit(Math.max(1,Math.min(500,howMany||100))));
@@ -533,7 +573,7 @@
       for(var si=0;si<sks.length;si++){var r=sm[sks[si]];if(!r||r.applied===false)continue;var rid=r.meseId!=null?String(r.meseId):"",rn=norm(r.monthNorm||r.monthName),cm=rid?byId(curM,rid):byName(curM,rn),nm=rid?byId(nextM,rid):byName(nextM,rn);if(rid)staffIds[rid]=true;if(cm){if(!nm||stableJson(cm)!==stableJson(nm))throw new Error("snapshot-accrediti-conflict");}else{if((rid&&byId(nextM,rid))||(rn&&byName(nextM,rn)))throw new Error("snapshot-accrediti-conflict");}}
       var aks=Object.keys(acc);for(var ai=0;ai<aks.length;ai++){var ak=aks[ai];if(!/^\d+$/.test(ak)||acc[ak]!==true||staffIds[ak])continue;var cm2=byId(curM,ak),nm2=byId(nextM,ak);if(cm2){if(!nm2||stableJson(cm2)!==stableJson(nm2))throw new Error("snapshot-accrediti-conflict");}else if(nm2){throw new Error("snapshot-accrediti-conflict");}}
       tx.set(preRef,snapshotEvent(pgId,cur,"Backup automatico prima del ripristino",true));
-      next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(cur._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(cur._dbRevision,10)||0)+1;next._archiviato=!!cur._archiviato;if(Object.prototype.hasOwnProperty.call(cur,"_archiveUnlockUntil")){next._archiveUnlockUntil=cur._archiveUnlockUntil;}
+      next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(cur._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(cur._dbRevision,10)||0)+1;next._archiviato=!!cur._archiviato;next._editPasswordConfigured=cur._editPasswordConfigured===true;if(Object.prototype.hasOwnProperty.call(cur,"_archiveUnlockUntil")){next._archiveUnlockUntil=cur._archiveUnlockUntil;}
       Object.keys(cur).forEach(function(k){if(/Counter$/.test(k)){var cv=parseInt(cur[k],10),nv=parseInt(next[k],10);if(Number.isFinite(cv)){next[k]=Math.max(cv,Number.isFinite(nv)?nv:0);}}});
       next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";tx.set(pgRef,next);tx.set(auditRef,narratorEvent(pgId,"Ripristino","Ripristinata versione: "+(snapshotLabel||"snapshot"),[]));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
@@ -545,7 +585,7 @@
       var pgSnap=await tx.get(pgRef); var accSnap=await tx.get(accRef); if(!pgSnap.exists())throw new Error("missing-pg");
       var curData=pgSnap.data(),curAcc=accSnap.exists()?accSnap.data():{};if(stableJson(curData)!==stableJson(expectedData||{})||stableJson(curAcc)!==stableJson(expectedAcc||{}))throw new Error("stale-data");
       tx.set(snapRef,snapshotEvent(pgId,curData,"Backup automatico prima della pulizia periodica",false));
-      var next=Object.assign({},dataObj||{});next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(curData._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(curData._dbRevision,10)||0)+1;next._archiviato=!!curData._archiviato;if(Object.prototype.hasOwnProperty.call(curData,"_archiveUnlockUntil"))next._archiveUnlockUntil=curData._archiveUnlockUntil;next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";
+      var next=Object.assign({},dataObj||{});next._pgName=pgId;next._schemaVersion=Math.max(25,parseInt(curData._schemaVersion,10)||0,parseInt(next._schemaVersion,10)||0);next._dbRevision=(parseInt(curData._dbRevision,10)||0)+1;next._archiviato=!!curData._archiviato;next._editPasswordConfigured=curData._editPasswordConfigured===true;if(Object.prototype.hasOwnProperty.call(curData,"_archiveUnlockUntil"))next._archiveUnlockUntil=curData._archiveUnlockUntil;next._lastModifiedAt=serverTimestamp();next._lastModifiedBy="narratore";next._lastSessionId="";
       var nextAcc=Object.assign({},accObj||{});nextAcc._lastModifiedAt=serverTimestamp();nextAcc._lastModifiedBy="narratore";nextAcc._lastAction="Pulizia periodica archivio";
       tx.set(pgRef,next);tx.set(accRef,nextAcc);tx.set(auditRef,narratorEvent(pgId,"Archivio","Pulizia periodica del database completata",[]));
     }).then(function(){return true;}).catch(function(e){console.error(e);return false;});
@@ -1105,6 +1145,45 @@
     parent.appendChild(det);
   }
 
+  function appendElfoPasswordPanel(parent){
+    var det=el("details","history-tools elfo-password-panel");
+    det.appendChild(el("summary",null,"🔐 Password di modifica degli Elfi"));
+    var holder=el("div");holder.appendChild(el("p","small-note","Le password servono soltanto a modificare gli Elfi: la visualizzazione resta pubblica. Una password già impostata non può essere cambiata. Se un Player la dimentica, puoi leggerla qui e comunicargli la stessa password."));det.appendChild(holder);
+    var loaded=false;
+    function load(){
+      holder.innerHTML="Caricamento password…";
+      window.fbListElfoPasswords().then(function(passwords){
+        holder.innerHTML="";
+        var rows=[];
+        for(var a=0;a<datiAdulti.length;a++){rows.push({tipo:"adulto",label:"Adulto",pg:datiAdulti[a],secret:passwords.adulto[datiAdulti[a].id]||null});}
+        for(var s=0;s<datiStudenti.length;s++){rows.push({tipo:"studente",label:"Studente",pg:datiStudenti[s],secret:passwords.studente[datiStudenti[s].id]||null});}
+        rows.sort(function(x,y){return String(x.pg.id).localeCompare(String(y.pg.id),"it",{sensitivity:"base"});});
+        if(!rows.length){holder.appendChild(el("p","small-note","Nessun PG registrato."));return;}
+        for(var i=0;i<rows.length;i++){
+          (function(row){
+            var wrap=el("div","elfo-password-row");
+            var who=el("div");who.appendChild(el("div","mese-title",row.pg.id));who.appendChild(el("div","elfo-password-status",row.label+(row.pg.data&&row.pg.data._archiviato?" · archiviato":"")));wrap.appendChild(who);
+            var type=el("div","small-note",row.label);wrap.appendChild(type);
+            var secretCell=el("div");
+            if(row.secret&&typeof row.secret.password==="string"){
+              var value=String(row.secret.password),shown=false,txt=el("div","elfo-password-secret","••••••••");secretCell.appendChild(txt);
+              var acts=el("div","archive-actions"),show=el("button","action small","Mostra");show.type="button";show.addEventListener(EV,function(){shown=!shown;txt.textContent=shown?value:"••••••••";show.textContent=shown?"Nascondi":"Mostra";});acts.appendChild(show);
+              var cp=el("button","action small","Copia");cp.type="button";cp.addEventListener(EV,function(){copyText(value,cp);});acts.appendChild(cp);secretCell.appendChild(acts);
+            }else{
+              secretCell.appendChild(el("div","elfo-password-missing","Password non configurata"));
+              var form=el("div","elfo-password-create"),c1=el("div"),c2=el("div");c1.appendChild(el("label",null,"Password definitiva"));var p1=el("input");p1.type="password";p1.autocomplete="new-password";c1.appendChild(p1);c2.appendChild(el("label",null,"Ripeti password"));var p2=el("input");p2.type="password";p2.autocomplete="new-password";c2.appendChild(p2);form.appendChild(c1);form.appendChild(c2);
+              var set=el("button","action","Imposta password definitiva");set.type="button";set.addEventListener(EV,function(){if(!p1.value){alert("Inserisci la password.");return;}if(p1.value!==p2.value){alert("Le due password non coincidono.");return;}if(!confirm("Impostare definitivamente questa password per "+row.pg.id+"?\n\nDopo la conferma non potrà essere cambiata.")){return;}set.disabled=true;set.textContent="Salvataggio…";window.fbSetElfoPassword(row.tipo,row.pg.id,p1.value).then(function(res){if(res&&res.ok){row.pg.data._editPasswordConfigured=true;loaded=false;load();}else{set.disabled=false;set.textContent="Imposta password definitiva";alert("Impostazione non riuscita: "+((res&&res.code)||"errore")+".");}});});form.appendChild(set);secretCell.appendChild(form);
+            }
+            wrap.appendChild(secretCell);
+            holder.appendChild(wrap);
+          })(rows[i]);
+        }
+      }).catch(function(e){console.error(e);holder.innerHTML="Impossibile caricare le password. Verifica le Rules Firebase.";loaded=false;});
+    }
+    det.addEventListener("toggle",function(){if(det.open&&!loaded){loaded=true;load();}});
+    parent.appendChild(det);
+  }
+
   function renderDashboard(container){
     var p = el("div", "panel");
     p.appendChild(el("h2", null, "Personaggi registrati"));
@@ -1122,6 +1201,7 @@
     dashboardActions.appendChild(btnRefresh);
     p.appendChild(dashboardActions);
     appendGameAdminPanel(p);
+    appendElfoPasswordPanel(p);
 
     p.appendChild(el("div", "divider"));
     p.appendChild(el("div","guide-text","<b>Gestione PG:</b> usa «Archivio periodico e pulizia database» per copiare sul Forum i dati conclusi e poi rimuoverli in sicurezza da Firebase. «Archivia PG» congela invece l’intero Personaggio senza cancellarlo; da lì puoi generare il backup definitivo prima di eliminarlo. L’eliminazione definitiva rimuove i dati di gioco ma conserva un marcatore tecnico minimo che impedisce di ricreare accidentalmente lo stesso PG. L’archiviazione semplice non riduce lo spazio occupato."));
