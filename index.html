@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v26 - gestione password definitive degli Elfi, 01/09/2026 -->
+<!-- v72 - UX Narratore, Taccuino Staff, registro sincronizzato e Bonus primi X Post, 02/09/2026 -->
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -242,7 +242,55 @@
   .elfo-password-row:first-child{border-top:0}.elfo-password-row .action{margin:0}.elfo-password-secret{font-family:monospace;letter-spacing:.03em;overflow-wrap:anywhere}
   .elfo-password-create{display:grid;grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) auto;gap:8px;align-items:end}
   .elfo-password-create .action{margin:0}.elfo-password-status{font-size:.72rem;color:#6b5a3c}.elfo-password-missing{color:#8a2f2f;font-weight:700}
-  @media(max-width:700px){.elfo-password-row{grid-template-columns:1fr}.elfo-password-create{grid-template-columns:1fr}}
+
+  /* v71 - UX operativa Narratore */
+  .narrator-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 16px}
+  .narrator-toolbar .action{margin-top:0}
+  .narrator-tutorial{border:1px solid var(--gold);border-radius:9px;background:#fff8df;padding:14px 16px;margin:10px 0 18px;line-height:1.45}
+  .narrator-tutorial h3{margin:0 0 8px;font-size:1.05rem}
+  .tutorial-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px;margin-top:10px}
+  .tutorial-step{background:#fffdf5;border:1px solid #cdbc83;border-radius:7px;padding:10px;font-size:.8rem}
+  .tutorial-step b{display:block;margin-bottom:3px}
+  .registry-top{margin:10px 0 20px;padding:14px;border:1px solid #b9a66c;border-radius:9px;background:rgba(255,253,245,.92)}
+  .registry-top h3{margin:0 0 8px;font-size:1rem}
+  .registry-top .summary-code{max-height:230px;overflow:auto}
+  .technical-tools{margin:28px 0 8px;border-top:1px solid rgba(185,166,108,.7);padding-top:14px}
+  .technical-tools-title{font-weight:800;margin:0 0 8px}
+  .pg-card{padding:0;overflow:hidden;margin-bottom:9px}
+  button.pg-card-summary{width:100%;border:0;background:#fffdf5;color:var(--green-dark);cursor:pointer;padding:10px 36px 10px 12px;display:flex;align-items:center;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;position:relative;text-align:left;font-family:inherit}
+  button.pg-card-summary::after{content:"▸";position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800}
+  button.pg-card-summary[aria-expanded="true"]::after{content:"▾"}
+  button.pg-card-summary[aria-expanded="true"]{background:#f7f0df;border-bottom:1px dashed var(--gold)}
+  .pg-card-body{padding:10px 12px 13px}
+  .pg-card-body[hidden]{display:none!important}
+  .pg-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 12px}
+  .pg-tab{border:1px solid #b9a66c;border-radius:999px;background:#f7f0df;color:#3d321f;padding:6px 10px;font-size:.76rem;font-weight:700;cursor:pointer}
+  .pg-tab.active{background:var(--green);color:var(--parch);border-color:var(--gold)}
+  .pg-tab-panel[hidden]{display:none!important}
+  .quick-help{font-size:.78rem;line-height:1.4;padding:8px 10px;border-left:3px solid var(--gold);background:rgba(212,175,55,.08);margin:6px 0 12px}
+  .month-filter{display:flex;gap:9px;align-items:end;flex-wrap:wrap;margin:8px 0 12px}
+  .month-filter>div{min-width:180px;max-width:280px}
+  .month-filter label{margin-top:0}
+  .mese-row.is-accredited{opacity:.82}
+  .mese-row.is-focus{outline:2px solid rgba(212,175,55,.75);outline-offset:5px;border-radius:5px}
+  .registry-inline{margin:10px 0 4px;padding:9px 10px;border:1px solid #8fa985;border-radius:7px;background:#eef6ea}
+  .registry-inline-title{font-weight:800;font-size:.78rem;margin-bottom:5px}
+  .registry-inline .summary-code{margin:5px 0 0;padding:8px;font-size:.76rem}
+  .player-editor{border:1px solid #c8b98b;border-radius:8px;background:rgba(255,255,255,.42);padding:12px;margin:8px 0}
+  .player-editor h4{margin:6px 0 10px}
+  .editor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px}
+  .editor-grid label{margin-top:0}
+  .editor-post{display:grid;grid-template-columns:minmax(180px,1.8fr) minmax(150px,1fr) auto;gap:7px;align-items:end;padding:8px 0;border-top:1px dashed #c8b98b}
+  .editor-post:first-child{border-top:0}
+  .editor-post .action{margin:0}
+  .editor-bonus{border:1px solid #d2c49a;border-radius:7px;padding:9px;margin:8px 0;background:#fffdf5}
+  .editor-bonus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px;font-size:.8rem;font-weight:800}
+  .advanced-editor textarea{width:100%;min-height:240px;resize:vertical;border:1px solid var(--gold);border-radius:5px;background:#fffdf5;padding:9px;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
+  .editor-lock{padding:8px 10px;border:1px solid #d88b18;border-radius:6px;background:#fff0cf;color:#754500;font-size:.78rem;font-weight:700}
+  .compact-status{display:inline-block;padding:3px 7px;border-radius:999px;font-size:.7rem;font-weight:800;margin-left:5px}
+  .compact-status.pending{background:#f7e5df;color:#8c2f2f}
+  .compact-status.ok{background:#e5f1df;color:#35613d}
+  @media(max-width:700px){.elfo-password-row{grid-template-columns:1fr}.elfo-password-create{grid-template-columns:1fr}.editor-post{grid-template-columns:1fr}.tutorial-steps{grid-template-columns:1fr}}
 
 </style>
 </head>
@@ -308,7 +356,7 @@
 
   function personCollectionForAccrediti(ac){ return ac === "accrediti_adulti" ? "personaggi_adulti" : "personaggi_studenti"; }
   function narratorEvent(pgId, section, summary, changes){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),section:section||"Narratore",summary:summary||"Intervento del Narratore",changes:Array.isArray(changes)?changes:[]}; }
-  function snapshotEvent(pgId,state,reason,protect){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),reason:reason||"Snapshot Narratore",protected:!!protect,state:state||{},sizeBytes:JSON.stringify(state||{}).length,schemaVersion:25}; }
+  function snapshotEvent(pgId,state,reason,protect){ return {pgId:pgId,actor:"narratore",at:serverTimestamp(),reason:reason||"Snapshot Narratore",protected:!!protect,state:state||{},sizeBytes:JSON.stringify(state||{}).length,schemaVersion:28}; }
 
   window.fbSetAccredito = function(collectionName, pgId, meseId, valore, expectedPgRevision, expectedMonthData){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.resolve({ok:false,code:"unauthorized"}); }
@@ -486,6 +534,39 @@
     return getDoc(doc(fbDb, collectionName, pgId)).then(function(snap){return snap.exists()?snap.data():null;});
   };
 
+  window.fbPatchPgFields = function(collectionName, pgId, expectedRevision, fields, summary, changes){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){return Promise.resolve({ok:false,code:"unauthorized"});}
+    var pgRef=doc(fbDb,collectionName,pgId),auditRef=doc(collection(fbDb,collectionName,pgId,"audit")),snapRef=doc(collection(fbDb,collectionName,pgId,"snapshots"));
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(pgRef);if(!snap.exists())throw new Error("missing-pg");
+      var cur=snap.data()||{};if(cur._deleted)throw new Error("deleted-pg");
+      var remoteRevision=Math.max(0,parseInt(cur._dbRevision,10)||0),expected=Math.max(0,parseInt(expectedRevision,10)||0);
+      if(remoteRevision!==expected)throw new Error("stale-pg");
+      var patch=Object.assign({},fields||{});
+      patch._dbRevision=remoteRevision+1;patch._lastModifiedAt=serverTimestamp();patch._lastModifiedBy="narratore";patch._lastSessionId="";patch._lastAction=String(summary||"Correzione dati Player dal Pannello Narratore");
+      tx.set(snapRef,snapshotEvent(pgId,cur,"Backup automatico prima della correzione Narratore",true));
+      tx.set(pgRef,patch,{merge:true});
+      tx.set(auditRef,narratorEvent(pgId,"Correzione dati Player",patch._lastAction,Array.isArray(changes)?changes:[]));
+    }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+
+  window.fbGetTaccuinoAdmin = function(pgId){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){return Promise.reject(new Error("unauthorized"));}
+    return getDoc(doc(fbDb,"taccuini_personali",pgId)).then(function(snap){return snap.exists()?snap.data():null;});
+  };
+
+  window.fbSaveTaccuinoAdmin = function(personCollection,pgId,nextValue){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){return Promise.resolve({ok:false,code:"unauthorized"});}
+    var ref=doc(fbDb,"taccuini_personali",pgId),backupRef=doc(collection(fbDb,"taccuini_personali",pgId,"narrator_backups")),auditRef=doc(collection(fbDb,personCollection,pgId,"audit"));
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(ref),cur=snap.exists()?snap.data():{};
+      tx.set(backupRef,{at:serverTimestamp(),actor:"narratore",state:cur,sizeBytes:JSON.stringify(cur||{}).length});
+      var next=Object.assign({},nextValue||{});next.savedAt=serverTimestamp();next.savedBy="narratore";
+      tx.set(ref,next);
+      tx.set(auditRef,narratorEvent(pgId,"Taccuino","Taccuino personale corretto dal Pannello Narratore",[]));
+    }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
 
   window.fbListElfoPasswords = function(){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return Promise.reject(new Error("unauthorized")); }
@@ -670,6 +751,12 @@
   var meseRiepilogoSelezionato = "";
   var filtroPg = "";
   var filtroPgTimer = null;
+  var openPgCards = {};
+  var pgActiveTabs = {};
+  var pgMonthFilters = {};
+  var lastAccredited = null;
+  var narratorGuideOpen = false;
+  var NARRATOR_GUIDE_KEY = "felix_narratore_guida_v1";
 
   function sanitizeHtml(html){
     var template=document.createElement("template"); template.innerHTML=String(html==null?"":html);
@@ -715,7 +802,7 @@
   function meseBonusPP(mese){var v=parseInt(mese&&mese.eventoBonusPP!=null?mese.eventoBonusPP:0,10);return (!isNaN(v)&&v>0)?v:0;}
   function meseBonusGaleoni(mese){var v=parseInt(mese&&mese.eventoBonusGaleoni!=null?mese.eventoBonusGaleoni:0,10);return (!isNaN(v)&&v>0)?v:0;}
   function meseBonusAltro(mese){return String(mese&&mese.eventoBonusAltro!=null?mese.eventoBonusAltro:"").trim();}
-  function normBonusMode(v){return ["all","posts","manual"].indexOf(v)>=0?v:"all";}
+  function normBonusMode(v){return ["all","posts","first","manual"].indexOf(v)>=0?v:"all";}
   function normBonusValue(v){return ["fixed","variable"].indexOf(v)>=0?v:"fixed";}
   function normBonusTarget(v){return ["pp","galeoni","altro"].indexOf(v)>=0?v:"pp";}
 
@@ -723,7 +810,7 @@
     var out=[{
       id:"__primary__",primary:true,descrizione:String(mese&&mese.eventoBonusDescrizione||""),
       pp:meseBonusPP(mese),galeoni:meseBonusGaleoni(mese),altro:meseBonusAltro(mese),
-      modalita:normBonusMode(mese&&mese.eventoBonusModalita),valore:normBonusValue(mese&&mese.eventoBonusValore),
+      modalita:normBonusMode(mese&&mese.eventoBonusModalita),primiPost:Math.max(0,parseInt(mese&&mese.eventoBonusPrimiPost,10)||0),valore:normBonusValue(mese&&mese.eventoBonusValore),
       maxUtilizzi:Math.max(0,parseInt(mese&&mese.eventoBonusMaxUtilizzi,10)||0),
       usatiIniziali:Math.max(0,parseInt(mese&&mese.eventoBonusUsatiIniziali,10)||0),
       usatiConfermati:mese&&mese.eventoBonusUsatiConfermati===true,
@@ -736,7 +823,7 @@
       out.push({
         id:String(b.id||("bonus_"+i)),primary:false,descrizione:String(b.descrizione||""),
         pp:Math.max(0,parseInt(b.pp,10)||0),galeoni:Math.max(0,parseInt(b.galeoni,10)||0),altro:String(b.altro||"").trim(),
-        modalita:normBonusMode(b.modalita),valore:normBonusValue(b.valore),
+        modalita:normBonusMode(b.modalita),primiPost:Math.max(0,parseInt(b.primiPost,10)||0),valore:normBonusValue(b.valore),
         maxUtilizzi:Math.max(0,parseInt(b.maxUtilizzi,10)||0),usatiIniziali:Math.max(0,parseInt(b.usatiIniziali,10)||0),
         usatiConfermati:b.usatiConfermati===true,
         variabileSu:normBonusTarget(b.variabileSu),utilizziManuali:Math.max(0,parseInt(b.utilizziManuali,10)||0)
@@ -764,37 +851,42 @@
     var r=narratorUsageRecord(post,b);
     return !!(r&&r.used&&isValidPostLink(post&&post.link));
   }
-  function narratorPostEligible(post,b){
+  function narratorPostEligible(post,b,posts){
     if(!post||!isValidPostLink(post.link))return false;
     if(b.modalita==="all")return true;
     if(b.modalita==="posts")return narratorPostUses(post,b);
+    if(b.modalita==="first"){
+      var max=Math.max(0,parseInt(b.primiPost,10)||0);if(max<=0)return false;
+      posts=Array.isArray(posts)?posts:[];var seen=0;
+      for(var i=0;i<posts.length;i++){if(!posts[i]||!isValidPostLink(posts[i].link))continue;seen++;if(posts[i]===post)return seen<=max;}
+    }
     return false;
   }
   function narratorBonusCount(posts,b){
     if(b.modalita==="manual")return Math.max(0,parseInt(b.utilizziManuali,10)||0);
     var c=0;posts=Array.isArray(posts)?posts:[];
-    for(var i=0;i<posts.length;i++)if(narratorPostEligible(posts[i],b))c++;
+    for(var i=0;i<posts.length;i++)if(narratorPostEligible(posts[i],b,posts))c++;
     return c;
   }
   function narratorBonusCurrentUses(posts,b){return Math.max(0,parseInt(b.usatiIniziali,10)||0)+narratorBonusCount(posts,b);}
-  function narratorBonusPPOnPost(post,b){
-    if(!narratorPostEligible(post,b))return 0;
+  function narratorBonusPPOnPost(post,b,posts){
+    if(!narratorPostEligible(post,b,posts))return 0;
     if(b.modalita==="posts"&&b.valore==="variable"){
       var r=narratorUsageRecord(post,b);
       return b.variabileSu==="pp"&&r?Math.max(0,parseInt(r.pp,10)||0):0;
     }
     return b.pp;
   }
-  function narratorBonusGOnPost(post,b){
-    if(!narratorPostEligible(post,b))return 0;
+  function narratorBonusGOnPost(post,b,posts){
+    if(!narratorPostEligible(post,b,posts))return 0;
     if(b.modalita==="posts"&&b.valore==="variable"){
       var r=narratorUsageRecord(post,b);
       return b.variabileSu==="galeoni"&&r?Math.max(0,parseInt(r.galeoni,10)||0):0;
     }
     return b.galeoni;
   }
-  function narratorBonusAltroOnPost(post,b){
-    if(!narratorPostEligible(post,b))return "";
+  function narratorBonusAltroOnPost(post,b,posts){
+    if(!narratorPostEligible(post,b,posts))return "";
     if(b.modalita==="posts"&&b.valore==="variable"){
       var r=narratorUsageRecord(post,b);
       return b.variabileSu==="altro"&&r?String(r.altro||"").trim():"";
@@ -806,7 +898,7 @@
     var tot=0;for(var p=1;p<=count;p++)tot+=valoreG(tipo,p);
     var bonuses=narratorAllBonuses(mese);
     for(var b=0;b<bonuses.length;b++){
-      for(var j=0;j<posts.length;j++)tot+=narratorBonusGOnPost(posts[j],bonuses[b]);
+      for(var j=0;j<posts.length;j++)tot+=narratorBonusGOnPost(posts[j],bonuses[b],posts);
       if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
     }
     return tot;
@@ -817,7 +909,7 @@
       var post=posts[i];if(!post||!isValidPostLink(post.link))continue;
       /* post.pp appartiene al vecchio sistema Bonus ed è ignorato.
          I PP validi arrivano esclusivamente dai Bonus generici correnti. */
-      for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b]);
+      for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b],posts);
     }
     for(var k=0;k<bonuses.length;k++)if(bonuses[k].modalita==="manual")tot+=bonuses[k].utilizziManuali*bonuses[k].pp;
     return tot;
@@ -825,7 +917,7 @@
   function totaleBonusEvento(posts,mese){
     var bonuses=narratorAllBonuses(mese),tot=0;
     for(var b=0;b<bonuses.length;b++){
-      for(var i=0;i<posts.length;i++)tot+=narratorBonusPPOnPost(posts[i],bonuses[b]);
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusPPOnPost(posts[i],bonuses[b],posts);
       if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].pp;
     }
     return tot;
@@ -833,7 +925,7 @@
   function totaleBonusEventoGaleoni(posts,mese){
     var bonuses=narratorAllBonuses(mese),tot=0;
     for(var b=0;b<bonuses.length;b++){
-      for(var i=0;i<posts.length;i++)tot+=narratorBonusGOnPost(posts[i],bonuses[b]);
+      for(var i=0;i<posts.length;i++)tot+=narratorBonusGOnPost(posts[i],bonuses[b],posts);
       if(bonuses[b].modalita==="manual")tot+=bonuses[b].utilizziManuali*bonuses[b].galeoni;
     }
     return tot;
@@ -843,7 +935,7 @@
     for(var b=0;b<bonuses.length;b++){
       if(bonuses[b].modalita==="manual"&&bonuses[b].utilizziManuali>0&&bonuses[b].altro)out.push(narratorBonusName(bonuses[b],b)+": "+bonuses[b].altro);
       for(var i=0;i<(posts||[]).length;i++){
-        var a=narratorBonusAltroOnPost(posts[i],bonuses[b]);if(a)out.push(a);
+        var a=narratorBonusAltroOnPost(posts[i],bonuses[b],posts);if(a)out.push(a);
       }
     }
     return out.join(", ");
@@ -971,6 +1063,10 @@
     return labels;
   }
   function registryLineFromRecord(pgId,record){var defs=staffFieldDefs(record.tipo),parts=[];for(var i=0;i<defs.length;i++){var d=defs[i],a=optionalNum(record.after&&record.after[d.key]);if(a===null)continue;parts.push(d.label+" "+fmtStaffNum(a)+" ("+fmtSigned(recordNet(record,d.key))+")");}var gDelta=recordNet(record,"galeoni"),ppDelta=recordNet(record,"pp"),lead="<b>"+pgId+":</b> "+fmtSigned(gDelta)+" Galeoni";if(Math.abs(ppDelta)>.00001)lead+=", "+fmtSigned(ppDelta)+" PP";return lead+(parts.length?" | <b>Nuovi valori in Scheda:</b> "+parts.join("; "):"");}
+  function registryLineForMonth(pgEntry,accreditiCollection,accreditiData,mese){
+    var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",entry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome));if(entry&&entry.record)return registryLineFromRecord(pgEntry.id,entry.record);
+    if(accreditiData&&mese&&accreditiData[mese.id]){var posts=Array.isArray(mese.posts)?mese.posts:[],g=totaleG(tipo,posts,mese),pp=totalePP(posts,mese),line="<b>"+pgEntry.id+":</b> +"+g+" Galeoni";if(pp>0)line+=", +"+pp+" PP";return line;}return "";
+  }
   function allAvailableMonthNames(){var map={};function add(nome){var c=canonicalMonthLabel(nome),k=monthKey(c);if(c&&k>=0)map[c]=k;}for(var a=0;a<datiAdulti.length;a++){var ma=datiAdulti[a].data.MESI||[];for(var i=0;i<ma.length;i++)if(!isImportedStudentMonth(ma[i]))add(ma[i].nome);}for(var s=0;s<datiStudenti.length;s++){var ms=datiStudenti[s].data.MESI||[];for(var j=0;j<ms.length;j++)if(!isImportedStudentMonth(ms[j]))add(ms[j].nome);}var ck=Object.keys(accreditiCache);for(var cki=0;cki<ck.length;cki++){var sm=accreditiCache[ck[cki]]&&accreditiCache[ck[cki]]._staffMonths||{},sk=Object.keys(sm);for(var z=0;z<sk.length;z++){var r=sm[sk[z]];if(r&&r.monthName)add(r.monthName);}}var mn=["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"],now=new Date();for(var off=-18;off<=0;off++){var d=new Date(now.getFullYear(),now.getMonth()+off,1);add(mn[d.getMonth()]+" "+d.getFullYear());}var arr=Object.keys(map);arr.sort(function(x,y){return map[y]-map[x];});return arr;}
   function copyText(txt, btn){
     function done(ok){ var old=btn.textContent; btn.textContent=ok ? "Copiato!" : "Copia non riuscita"; setTimeout(function(){ btn.textContent=old; },1400); }
@@ -1047,7 +1143,7 @@
   function renderLogin(container){
     var p = el("div", "panel");
     p.appendChild(el("h2", null, "Accesso Narratore"));
-    p.appendChild(el("div", "guide-text", "Solo l'account autorizzato pu\u00f2 confermare gli accrediti. Se non sei il Narratore, questa pagina non ti serve."));
+    p.appendChild(el("p","small-note","Accesso riservato al Narratore."));
 
     var row = el("div", "row");
     var d1 = el("div"); d1.appendChild(el("label", null, "Email"));
@@ -1184,99 +1280,83 @@
     parent.appendChild(det);
   }
 
+  function narratorGuideWasSeen(){try{return localStorage.getItem(NARRATOR_GUIDE_KEY)==="1";}catch(e){return false;}}
+  function markNarratorGuideSeen(){try{localStorage.setItem(NARRATOR_GUIDE_KEY,"1");}catch(e){}}
+  function renderNarratorGuide(parent){
+    var box=el("div","narrator-tutorial");box.appendChild(el("h3",null,"❔ Guida rapida del Pannello Narratore"));
+    box.appendChild(el("p","small-note","Questa guida spiega il flusso del Tool, non il regolamento."));
+    var steps=el("div","tutorial-steps");
+    [["1 · Cerca il PG","Scrivi il nome nella ricerca e apri la sua scheda."],["2 · Controlla","In «Accredito» verifica Post, Bonus e valori della Scheda. Se il Player ha sbagliato, usa «Dati Player» prima di accreditare."],["3 · Accredita","Spunta «Da accreditare». Il Tool salva l’accredito e aggiorna i valori correnti."],["4 · Copia sul Forum","Subito dopo compare la stringa «Testo per il Registro» nella scheda del PG. Il riepilogo di tutto il mese è anche in alto."],["5 · Correggi errori","In «Dati Player» puoi modificare o eliminare Mesi, Post e Bonus, correggere le altre sezioni e aprire anche il Taccuino personale."],["6 · Operazioni rare","Archivi, ripristini, password e Giochi Magici sono separati dalle operazioni quotidiane." ]].forEach(function(x){var d=el("div","tutorial-step");d.appendChild(el("b",null,x[0]));d.appendChild(document.createTextNode(x[1]));steps.appendChild(d);});
+    box.appendChild(steps);var close=el("button","action small","Chiudi guida");close.type="button";close.addEventListener(EV,function(){narratorGuideOpen=false;markNarratorGuideSeen();renderApp();});box.appendChild(close);parent.appendChild(box);
+  }
+
+  function topLevelEditableKeys(data){
+    var preferred=["TACCUINO","DISPENSA","LABORATORI","SERRE","RISERVE","POSTAZIONI","PIANTE","CREATURE","MEDICHERIA","FANTAWIZ","FANTAHOGWARTS","MISSIONI","STRUTTURE","NAV_ORDER","TITOLO_ELFO"];
+    var out=[],seen={};data=data||{};
+    for(var i=0;i<preferred.length;i++){if(Object.prototype.hasOwnProperty.call(data,preferred[i])&&preferred[i]!=="MESI"){out.push(preferred[i]);seen[preferred[i]]=1;}}
+    Object.keys(data).sort().forEach(function(k){if(k==="MESI"||k.charAt(0)==="_"||seen[k]||/Counter$/.test(k)||["RICHIESTA_ELIMINAZIONE"].indexOf(k)>=0)return;var v=data[k];if(v&&typeof v==="object"){out.push(k);seen[k]=1;}});
+    return out;
+  }
+  function bonusEditorRow(mese,b,isPrimary,index,locked){
+    var wrap=el("div","editor-bonus"),head=el("div","editor-bonus-head");head.appendChild(document.createTextNode((isPrimary?"Bonus principale":"Bonus aggiuntivo "+index)));
+    if(!isPrimary){var rm=el("button","action danger small","Rimuovi");rm.type="button";rm.disabled=locked;rm.addEventListener(EV,function(){var arr=Array.isArray(mese.bonusAggiuntivi)?mese.bonusAggiuntivi:[];var pos=arr.indexOf(b);if(pos>=0)arr.splice(pos,1);wrap.remove();});head.appendChild(rm);}wrap.appendChild(head);
+    function get(field){if(isPrimary){var map={descrizione:"eventoBonusDescrizione",pp:"eventoBonusPP",galeoni:"eventoBonusGaleoni",altro:"eventoBonusAltro",modalita:"eventoBonusModalita",primiPost:"eventoBonusPrimiPost",valore:"eventoBonusValore",maxUtilizzi:"eventoBonusMaxUtilizzi",usatiIniziali:"eventoBonusUsatiIniziali",usatiConfermati:"eventoBonusUsatiConfermati",variabileSu:"eventoBonusVariabileSu",utilizziManuali:"eventoBonusUtilizziManuali"};return mese[map[field]];}return b[field];}
+    function set(field,value){if(isPrimary){var map={descrizione:"eventoBonusDescrizione",pp:"eventoBonusPP",galeoni:"eventoBonusGaleoni",altro:"eventoBonusAltro",modalita:"eventoBonusModalita",primiPost:"eventoBonusPrimiPost",valore:"eventoBonusValore",maxUtilizzi:"eventoBonusMaxUtilizzi",usatiIniziali:"eventoBonusUsatiIniziali",usatiConfermati:"eventoBonusUsatiConfermati",variabileSu:"eventoBonusVariabileSu",utilizziManuali:"eventoBonusUtilizziManuali"};mese[map[field]]=value;}else{b[field]=value;}}
+    var grid=el("div","editor-grid");
+    function field(label,type,key){var c=el("div");c.appendChild(el("label",null,label));var inp=el(type==="select"?"select":"input");if(type!=="select")inp.type=type||"text";inp.disabled=locked;if(key==="modalita"){[["all","Tutti i Post"],["first","Primi X Post"],["posts","Post selezionati / utilizzi"],["manual","Numero manuale"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];if(String(get(key)||"all")===x[0])o.selected=true;inp.appendChild(o);});}else{inp.value=get(key)==null?"":String(get(key));}inp.addEventListener(type==="select"?"change":"input",function(){var v=inp.value;if(["pp","galeoni","primiPost","maxUtilizzi","usatiIniziali","utilizziManuali"].indexOf(key)>=0)v=Math.max(0,parseInt(v,10)||0);set(key,v);});c.appendChild(inp);grid.appendChild(c);return inp;}
+    field("Descrizione","text","descrizione");var mode=field("Applicazione","select","modalita");var first=field("Primi X Post","number","primiPost");field("PP","number","pp");field("Galeoni","number","galeoni");field("Altro","text","altro");field("Utilizzi massimi","number","maxUtilizzi");field("Già usati","number","usatiIniziali");
+    function updateVis(){first.parentNode.style.display=mode.value==="first"?"block":"none";}mode.addEventListener("change",updateVis);updateVis();wrap.appendChild(grid);return wrap;
+  }
+
+  function appendPlayerDataEditor(holder,pgEntry,accreditiCollection,accreditiData){
+    holder.innerHTML="";holder.appendChild(el("div","quick-help","<b>Correzioni Player:</b> qui puoi sistemare ciò che il PG ha inserito senza aspettare che lo faccia lui. I Mesi già accreditati vanno prima revocati."));
+    var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti",working=deepClone(pgEntry.data.MESI||[]),box=el("div","player-editor");box.appendChild(el("h4",null,"Camera Blindata · Mesi, Post e Bonus"));
+    if(!working.length){box.appendChild(el("p","small-note","Nessun Mese presente."));holder.appendChild(box);}else{
+      var sel=el("select");for(var i=working.length-1;i>=0;i--){var o=el("option",null,(working[i].nome||"(senza nome)")+" · "+validPostCount(working[i].posts||[])+" Post");o.value=String(i);sel.appendChild(o);}box.appendChild(sel);var area=el("div");box.appendChild(area);
+      function renderMonth(){area.innerHTML="";var idx=parseInt(sel.value,10);if(isNaN(idx)||!working[idx])return;var mese=working[idx],entry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),locked=!!(accreditiData[mese.id]||entry);if(locked)area.appendChild(el("div","editor-lock","🔒 Questo Mese è già accreditato. Revoca prima l’accredito per modificarlo."));
+        var grid=el("div","editor-grid"),nameCell=el("div");nameCell.appendChild(el("label",null,"Nome del Mese"));var name=el("input");name.type="text";name.value=String(mese.nome||"");name.disabled=locked;name.addEventListener("input",function(){mese.nome=name.value;});nameCell.appendChild(name);grid.appendChild(nameCell);var closedCell=el("div");closedCell.appendChild(el("label",null,"Stato"));var closed=el("select");[[false,"Aperto"],[true,"Chiuso"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0]?"1":"0";if(!!mese.chiuso===x[0])o.selected=true;closed.appendChild(o);});closed.disabled=locked;closed.addEventListener("change",function(){mese.chiuso=closed.value==="1";});closedCell.appendChild(closed);grid.appendChild(closedCell);area.appendChild(grid);
+        area.appendChild(el("h4",null,"Post"));var posts=Array.isArray(mese.posts)?mese.posts:(mese.posts=[]),plist=el("div");function renderPosts(){plist.innerHTML="";for(var p=0;p<posts.length;p++)(function(post,pos){var row=el("div","editor-post"),a=el("div"),b=el("div");a.appendChild(el("label",null,"Link Post "+(pos+1)));var l=el("input");l.type="text";l.value=String(post.link||"");l.disabled=locked;l.addEventListener("input",function(){post.link=l.value;});a.appendChild(l);b.appendChild(el("label",null,"Nota"));var n=el("input");n.type="text";n.value=String(post.nota||"");n.disabled=locked;n.addEventListener("input",function(){post.nota=n.value;});b.appendChild(n);var rm=el("button","action danger small","Rimuovi");rm.type="button";rm.disabled=locked;rm.addEventListener(EV,function(){posts.splice(pos,1);renderPosts();});row.appendChild(a);row.appendChild(b);row.appendChild(rm);plist.appendChild(row);})(posts[p],p);}renderPosts();area.appendChild(plist);var addPost=el("button","action small","+ Aggiungi Post");addPost.type="button";addPost.disabled=locked;addPost.addEventListener(EV,function(){posts.push({id:Date.now(),link:"",nota:""});renderPosts();});area.appendChild(addPost);
+        area.appendChild(el("h4",null,"Bonus del Mese"));var bonuses=el("div");bonuses.appendChild(bonusEditorRow(mese,{},true,1,locked));var extras=Array.isArray(mese.bonusAggiuntivi)?mese.bonusAggiuntivi:(mese.bonusAggiuntivi=[]);for(var bi=0;bi<extras.length;bi++)bonuses.appendChild(bonusEditorRow(mese,extras[bi],false,bi+1,locked));area.appendChild(bonuses);var addBonus=el("button","action small","+ Aggiungi Bonus");addBonus.type="button";addBonus.disabled=locked;addBonus.addEventListener(EV,function(){var nb={id:"narr_"+Date.now().toString(36),descrizione:"",pp:0,galeoni:0,altro:"",modalita:"all",primiPost:0,valore:"fixed",maxUtilizzi:0,usatiIniziali:0,usatiConfermati:false,variabileSu:"pp",utilizziManuali:0};extras.push(nb);bonuses.appendChild(bonusEditorRow(mese,nb,false,extras.length,locked));});area.appendChild(addBonus);
+        var acts=el("div","archive-actions"),save=el("button","action small","Salva correzioni"),del=el("button","action danger small","Elimina questo Mese");save.type=del.type="button";save.disabled=del.disabled=locked;save.addEventListener(EV,function(){save.disabled=true;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,{MESI:working},"Correzione Camera Blindata dal Pannello Narratore",[{path:"MESI",before:"versione Player",after:"corretta dal Narratore"}]).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openPgCards[pgEntry.id]=true;pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{save.disabled=false;alert(applyErrorMessage(res&&res.code));}});});del.addEventListener(EV,function(){if(!confirm("Eliminare il Mese «"+(mese.nome||"senza nome")+"» dal PG? L’operazione sarà registrata e potrà essere recuperata dagli snapshot."))return;working.splice(idx,1);del.disabled=true;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,{MESI:working},"Eliminato Mese errato dal Pannello Narratore",[{path:"MESI",before:mese.nome||"Mese",after:"rimosso"}]).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openPgCards[pgEntry.id]=true;pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{del.disabled=false;alert(applyErrorMessage(res&&res.code));}});});acts.appendChild(save);acts.appendChild(del);area.appendChild(acts);
+      }sel.addEventListener("change",renderMonth);sel.value=String(working.length-1);renderMonth();holder.appendChild(box);
+    }
+    var adv=el("div","player-editor advanced-editor");adv.appendChild(el("h4",null,"Altri dati dell’Elfo · avanzato"));adv.appendChild(el("p","small-note","Per correzioni fuori dalla Camera Blindata: scegli una sezione, modifica il JSON e salva. Se non serve, ignora questa parte."));var keys=topLevelEditableKeys(pgEntry.data);if(!keys.length){adv.appendChild(el("p","small-note","Nessun’altra sezione dati modificabile trovata."));holder.appendChild(adv);}else{var ksel=el("select");keys.forEach(function(k){var o=el("option",null,k);o.value=k;ksel.appendChild(o);});var ta=el("textarea");function loadKey(){try{ta.value=JSON.stringify(pgEntry.data[ksel.value],null,2);}catch(e){ta.value="";}}ksel.addEventListener("change",loadKey);loadKey();adv.appendChild(ksel);adv.appendChild(ta);var sv=el("button","action small","Salva questa sezione");sv.type="button";sv.addEventListener(EV,function(){var parsed;try{parsed=JSON.parse(ta.value);}catch(e){alert("JSON non valido: controlla parentesi, virgolette e virgole.");return;}if(!confirm("Salvare le modifiche alla sezione "+ksel.value+" di "+pgEntry.id+"?"))return;sv.disabled=true;var patch={};patch[ksel.value]=parsed;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,patch,"Correzione sezione "+ksel.value+" dal Pannello Narratore",[{path:ksel.value,before:"versione Player",after:"corretta dal Narratore"}]).then(function(res){if(res&&res.ok){openPgCards[pgEntry.id]=true;pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{sv.disabled=false;alert(applyErrorMessage(res&&res.code));}});});adv.appendChild(sv);holder.appendChild(adv);}
+
+    var tacc=el("div","player-editor advanced-editor");tacc.appendChild(el("h4",null,"📓 Taccuino personale"));tacc.appendChild(el("p","small-note","Il Taccuino è salvato separatamente dal resto dell’Elfo. Caricalo qui per leggerlo o correggerlo senza chiedere al Player di intervenire."));var tload=el("button","action small","Carica Taccuino"),tsave=el("button","action small","Salva correzioni Taccuino"),tta=el("textarea"),tstatus=el("div","small-note","");tload.type=tsave.type="button";tsave.disabled=true;tta.style.display="none";tacc.appendChild(tload);tacc.appendChild(tta);tacc.appendChild(tsave);tacc.appendChild(tstatus);holder.appendChild(tacc);
+    tload.addEventListener(EV,function(){tload.disabled=true;tstatus.textContent="Caricamento…";window.fbGetTaccuinoAdmin(pgEntry.id).then(function(data){tta.value=JSON.stringify(data||{},null,2);tta.style.display="block";tsave.disabled=false;tload.textContent="Ricarica Taccuino";tload.disabled=false;tstatus.textContent=data?"Taccuino caricato.":"Nessun Taccuino cloud trovato: puoi crearne/correggerne uno da qui.";}).catch(function(e){console.error(e);tload.disabled=false;tstatus.textContent="Impossibile caricare il Taccuino.";});});
+    tsave.addEventListener(EV,function(){var parsed;try{parsed=JSON.parse(tta.value);}catch(e){alert("JSON del Taccuino non valido.");return;}if(!confirm("Salvare le correzioni al Taccuino di "+pgEntry.id+"? Prima verrà conservato un backup della versione attuale."))return;tsave.disabled=true;window.fbSaveTaccuinoAdmin(pc,pgEntry.id,parsed).then(function(res){tsave.disabled=false;if(res&&res.ok){tstatus.textContent="✓ Taccuino salvato; backup precedente conservato.";}else{tstatus.textContent="Salvataggio non riuscito.";}});});
+  }
+
   function renderDashboard(container){
-    var p = el("div", "panel");
-    p.appendChild(el("h2", null, "Personaggi registrati"));
+    var p=el("div","panel");
+    p.appendChild(el("h2",null,"Pannello Narratore"));
+    var toolbar=el("div","narrator-toolbar");
+    var btnRefresh=el("button","action small","↻ Aggiorna");btnRefresh.addEventListener(EV,function(){btnRefresh.textContent="Aggiornamento…";caricaTutto(function(){renderApp();});});toolbar.appendChild(btnRefresh);
+    var help=el("button","action small","❔ Guida");help.type="button";help.addEventListener(EV,function(){narratorGuideOpen=!narratorGuideOpen;if(narratorGuideOpen)markNarratorGuideSeen();renderApp();});toolbar.appendChild(help);
+    var btnLogout=el("button","action small","Esci");btnLogout.addEventListener(EV,function(){window.fbSignOut();});toolbar.appendChild(btnLogout);p.appendChild(toolbar);
+    if(narratorGuideOpen||!narratorGuideWasSeen()){renderNarratorGuide(p);}
 
-    var dashboardActions=el("div","dashboard-actions");
-    var btnLogout = el("button", "action small", "Esci");
-    btnLogout.addEventListener(EV, function(){ window.fbSignOut(); });
-    dashboardActions.appendChild(btnLogout);
+    var registry=el("div","registry-top");registry.id="riepilogo-mensile";p.appendChild(registry);renderRiepilogoMensile(registry);
 
-    var btnRefresh = el("button", "action small", "Aggiorna elenco");
-    btnRefresh.addEventListener(EV, function(){
-      btnRefresh.textContent = "Aggiornamento\u2026";
-      caricaTutto(function(){ renderApp(); });
-    });
-    dashboardActions.appendChild(btnRefresh);
-    p.appendChild(dashboardActions);
-    appendGameAdminPanel(p);
-    appendElfoPasswordPanel(p);
-
-    p.appendChild(el("div", "divider"));
-    p.appendChild(el("div","guide-text","<b>Gestione PG:</b> usa «Archivio periodico e pulizia database» per copiare sul Forum i dati conclusi e poi rimuoverli in sicurezza da Firebase. «Archivia PG» congela invece l’intero Personaggio senza cancellarlo; da lì puoi generare il backup definitivo prima di eliminarlo. L’eliminazione definitiva rimuove i dati di gioco ma conserva un marcatore tecnico minimo che impedisce di ricreare accidentalmente lo stesso PG. L’archiviazione semplice non riduce lo spazio occupato."));
-    var allPg=datiAdulti.concat(datiStudenti), maxBytes=0, maxPg="";
-    for(var dh=0;dh<allPg.length;dh++){
-      var b=stateSizeBytes(allPg[dh].data);
-      if(b>maxBytes){maxBytes=b;maxPg=allPg[dh].id;}
-    }
-
-    /* Il numero totale dei PG e la somma dei soli documenti principali
-       non sono metriche operative utili. Manteniamo invece il limite
-       realmente controllabile: 1 MiB per singolo documento Firestore. */
-    var docLimitBytes=1024*1024;
-    var freeDocBytes=Math.max(0,docLimitBytes-maxBytes);
-    var hcClass=maxBytes>850000?"db-size-danger":(maxBytes>650000?"db-size-warn":"");
-    var hc=el("div",hcClass,
-      "PG più pesante<br><b>"+(maxPg||"—")+" · "+firestoreDocUsage(maxBytes)+"</b>"+
-      "<span class=\"db-free-space\">Spazio residuo nel documento: ~"+sizeLabel(freeDocBytes)+"</span>"
-    );
-    var health=el("div","db-health");
-    health.appendChild(hc);
-    p.appendChild(health);
-
-    p.appendChild(el("p","small-note","Questo indicatore confronta il documento principale del PG più pesante con il limite di 1024 KB del singolo documento. Registro modifiche, snapshot e accrediti sono documenti Firebase separati e non consumano questo stesso limite."));
-    if(maxBytes>650000){
-      p.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ Conviene effettuare una pulizia periodica del PG più pesante prima che il singolo documento si avvicini al limite Firestore."));
-    }
-
-    var searchBox=el("div","guide-text dashboard-search");
-    searchBox.appendChild(el("div","dashboard-search-title","<b>Cerca PG</b>"));
-    var searchField=el("div","dashboard-search-field");
-    var searchLabel=el("label",null,"Scrivi nome o cognome");
-    var searchInput=el("input");
-    searchInput.type="search";
-    searchInput.placeholder="Scrivi nome o cognome…";
-    searchInput.value=filtroPg;
-    searchField.appendChild(searchLabel);
-    searchField.appendChild(searchInput);
-    searchBox.appendChild(searchField);
-    p.appendChild(searchBox);
+    var searchBox=el("div","dashboard-search");searchBox.appendChild(el("div","dashboard-search-title","<b>🔎 Cerca un PG</b>"));var searchField=el("div","dashboard-search-field"),searchInput=el("input");searchInput.type="search";searchInput.placeholder="Nome o cognome…";searchInput.value=filtroPg;searchField.appendChild(searchInput);searchBox.appendChild(searchField);p.appendChild(searchBox);
     var matchPg=function(x){var q=String(filtroPg||"").trim().toLowerCase();return !q||String(x.id||"").toLowerCase().indexOf(q)>=0;};
-    var adultiAttiviAll=datiAdulti.filter(function(x){return !x.data._archiviato;}), studentiAttiviAll=datiStudenti.filter(function(x){return !x.data._archiviato;}), adultiArchAll=datiAdulti.filter(function(x){return !!x.data._archiviato;}), studentiArchAll=datiStudenti.filter(function(x){return !!x.data._archiviato;});
-    var adultiAttivi=adultiAttiviAll.filter(matchPg), studentiAttivi=studentiAttiviAll.filter(matchPg), adultiArch=adultiArchAll.filter(matchPg), studentiArch=studentiArchAll.filter(matchPg);
-    searchInput.addEventListener("input",function(){filtroPg=searchInput.value;var pos=searchInput.selectionStart;if(filtroPgTimer){clearTimeout(filtroPgTimer);}filtroPgTimer=setTimeout(function(){renderApp();var ni=document.querySelector('input[type="search"]');if(ni){ni.focus();try{ni.setSelectionRange(pos,pos);}catch(e){}}},180);});
+    var adultiAttiviAll=datiAdulti.filter(function(x){return !x.data._archiviato;}),studentiAttiviAll=datiStudenti.filter(function(x){return !x.data._archiviato;}),adultiArchAll=datiAdulti.filter(function(x){return !!x.data._archiviato;}),studentiArchAll=datiStudenti.filter(function(x){return !!x.data._archiviato;});var adultiAttivi=adultiAttiviAll.filter(matchPg),studentiAttivi=studentiAttiviAll.filter(matchPg),adultiArch=adultiArchAll.filter(matchPg),studentiArch=studentiArchAll.filter(matchPg);
+    searchInput.addEventListener("input",function(){filtroPg=searchInput.value;var pos=searchInput.selectionStart;if(filtroPgTimer)clearTimeout(filtroPgTimer);filtroPgTimer=setTimeout(function(){renderApp();var ni=document.querySelector('input[type="search"]');if(ni){ni.focus();try{ni.setSelectionRange(pos,pos);}catch(e){}}},180);});
+    p.appendChild(el("h4",null,"PG Adulti ("+adultiAttivi.length+(filtroPg?" / "+adultiAttiviAll.length:"")+")"));for(var i=0;i<adultiAttivi.length;i++)p.appendChild(buildPgCard(adultiAttivi[i],"accrediti_adulti"));if(!adultiAttivi.length)p.appendChild(el("p","small-note",filtroPg?"Nessun Adulto corrispondente.":"Nessun Adulto attivo."));
+    p.appendChild(el("h4",null,"PG Studenti ("+studentiAttivi.length+(filtroPg?" / "+studentiAttiviAll.length:"")+")"));for(var j=0;j<studentiAttivi.length;j++)p.appendChild(buildPgCard(studentiAttivi[j],"accrediti_studenti"));if(!studentiAttivi.length)p.appendChild(el("p","small-note",filtroPg?"Nessuno Studente corrispondente.":"Nessuno Studente attivo."));
 
-    p.appendChild(el("h4", null, "PG Adulti (" + adultiAttivi.length + (filtroPg?" / "+adultiAttiviAll.length:"") + ")"));
-    for(var i=0;i<adultiAttivi.length;i++){ p.appendChild(buildPgCard(adultiAttivi[i], "accrediti_adulti")); }
-    if(adultiAttivi.length === 0){ p.appendChild(el("p", "small-note", filtroPg?"Nessun PG Adulto corrispondente alla ricerca.":"Nessun PG Adulto attivo.")); }
+    var archTot=adultiArch.length+studentiArch.length;if(archTot>0){var arch=el("details","archive-wrap");arch.appendChild(el("summary",null,"📦 PG archiviati ("+archTot+")"));if(adultiArch.length){arch.appendChild(el("h4",null,"Adulti"));for(var ai=0;ai<adultiArch.length;ai++)arch.appendChild(buildArchivedPgCard(adultiArch[ai],"accrediti_adulti"));}if(studentiArch.length){arch.appendChild(el("h4",null,"Studenti"));for(var si=0;si<studentiArch.length;si++)arch.appendChild(buildArchivedPgCard(studentiArch[si],"accrediti_studenti"));}p.appendChild(arch);}
 
-    p.appendChild(el("h4", null, "PG Studenti (" + studentiAttivi.length + (filtroPg?" / "+studentiAttiviAll.length:"") + ")"));
-    for(var j=0;j<studentiAttivi.length;j++){ p.appendChild(buildPgCard(studentiAttivi[j], "accrediti_studenti")); }
-    if(studentiAttivi.length === 0){ p.appendChild(el("p", "small-note", filtroPg?"Nessun PG Studente corrispondente alla ricerca.":"Nessun PG Studente attivo.")); }
-
-    var archTot=adultiArch.length+studentiArch.length;
-    if(archTot>0){
-      var arch=el("details","archive-wrap");
-      arch.appendChild(el("summary",null,"Archivio PG ("+archTot+")"));
-      if(adultiArch.length){ arch.appendChild(el("h4",null,"Adulti archiviati ("+adultiArch.length+")")); for(var ai=0;ai<adultiArch.length;ai++){arch.appendChild(buildArchivedPgCard(adultiArch[ai],"accrediti_adulti"));} }
-      if(studentiArch.length){ arch.appendChild(el("h4",null,"Studenti archiviati ("+studentiArch.length+")")); for(var si=0;si<studentiArch.length;si++){arch.appendChild(buildArchivedPgCard(studentiArch[si],"accrediti_studenti"));} }
-      p.appendChild(arch);
-    }
-
-    p.appendChild(el("div", "divider"));
-    var riepilogoWrap = el("div"); riepilogoWrap.id = "riepilogo-mensile";
-    p.appendChild(riepilogoWrap);
-    renderRiepilogoMensile(riepilogoWrap);
-
-    container.appendChild(p);
+    var tech=el("div","technical-tools");tech.appendChild(el("div","technical-tools-title","Operazioni meno frequenti"));
+    var allPg=datiAdulti.concat(datiStudenti),maxBytes=0,maxPg="";for(var dh=0;dh<allPg.length;dh++){var b=stateSizeBytes(allPg[dh].data);if(b>maxBytes){maxBytes=b;maxPg=allPg[dh].id;}}if(maxBytes>650000)tech.appendChild(el("p",maxBytes>850000?"db-size-danger":"db-size-warn","⚠ "+maxPg+" sta diventando pesante: "+firestoreDocUsage(maxBytes)+"."));
+    appendGameAdminPanel(tech);appendElfoPasswordPanel(tech);p.appendChild(tech);container.appendChild(p);
   }
 
   function renderRiepilogoMensile(container){
     if(!container){ return; }
     container.innerHTML = "";
-    container.appendChild(el("h2", null, "Riepilogo mensile per il Registro"));
-    container.appendChild(el("div", "guide-text", "Il testo comprende gli accrediti del mese e, quando il calcolatore Staff è stato usato, anche i nuovi valori da riportare in Scheda PG. I valori correnti vengono aggiornati nel pannello al momento dell'accredito; il Tracker del player li recepisce automaticamente al nuovo accredito e li fa ricontrollare all’apertura del mese successivo."));
+    container.appendChild(el("h3", null, "📋 Testo per il Registro accrediti"));
+    container.appendChild(el("p","small-note","Scegli il mese. Appena accrediti un PG, qui compare anche nel riepilogo complessivo da copiare sul Forum."));
 
     var entries = [];
     for(var a=0;a<datiAdulti.length;a++){ if(!datiAdulti[a].data._archiviato){ entries.push({tipo:"adulto", coll:"accrediti_adulti", pg:datiAdulti[a]}); } }
@@ -1323,7 +1403,7 @@
     }
     if(ambiguousPg.length)container.appendChild(el("div","warning-alert","⚠ Esclusi dal riepilogo perché hanno più Mesi chiamati «"+meseRiepilogoSelezionato+"»: <b>"+ambiguousPg.join(", ")+"</b>. Rinomina una delle vecchie voci nel relativo Tracker e poi aggiorna il pannello."));
     if(notProcessed.length)container.appendChild(el("p","small-note","Non ancora processati per "+meseRiepilogoSelezionato+": "+notProcessed.join(", ")+". I PG senza CB possono essere registrati come 0 post dalla sezione «Valori correnti da Scheda PG»."));
-    if(count===0){container.appendChild(el("p","small-note","Nessun PG risulta ancora accreditato senza ambiguità per "+meseRiepilogoSelezionato+"."));return;}
+    if(count===0){container.appendChild(el("p","small-note","Nessun accredito confermato per "+meseRiepilogoSelezionato+". Se hai appena lavorato un altro mese, selezionalo qui; per un singolo PG usa la riga copiabile dentro la sua scheda."));return;}
 
     lines.push("");
     lines.push("<b>Oggetti / Bonus usati — aggiornamenti Scheda PG:</b>");
@@ -1559,15 +1639,13 @@
   function createNumberInput(def,value){var inp=el("input");inp.type="number";inp.step=String(def.step||1);if(Number.isFinite(def.min))inp.min=String(def.min);if(Number.isFinite(def.max))inp.max=String(def.max);if(value!==null&&value!==undefined&&Number.isFinite(Number(value)))inp.value=String(value);return inp;}
   function readInputsByDefs(defs,inputs){var o={};for(var i=0;i<defs.length;i++)o[defs[i].key]=optionalNum(inputs[defs[i].key]&&inputs[defs[i].key].value);return o;}
   function makeExtraInputs(tipo){var defs=staffFieldDefs(tipo),wrap=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,(d.kind==="resource"?"Extra ":"Variazione extra ")+d.label+" (+/−)");var inp=createNumberInput({step:d.step},0);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);wrap.appendChild(cell);}return {wrap:wrap,inputs:inputs};}
-  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · variazione automatica altri Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b> (Dialettica esclusa)";if(tipo==="adulto"){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
+  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b>";if(tipo==="adulto"){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
   function applyErrorMessage(code){if(code==="stale-values")return "I valori correnti non coincidono più con quelli usati per questo calcolo. Ricarica il pannello e ricontrolla i valori prima di riprovare.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Correggi prima manualmente i valori correnti se devi ricostruire lo storico.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
   function appendStaffLedger(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",det=el("details","staff-ledger"),sum=el("summary",null,"📊 Valori correnti da Scheda PG e calcolo accrediti");det.appendChild(sum);
-    det.appendChild(el("p","small-note","Inserisci i valori presenti in Scheda PG solo la prima volta. Galeoni e PP posseduti sono obbligatori: se il PG non possiede PP, inserisci 0. Dopo ogni accredito il pannello li aggiorna automaticamente e li userà come base del mese successivo. Modificali manualmente soltanto se la Scheda cambia per operazioni avvenute fuori da questo flusso. I Tracker dei player ricevono automaticamente i nuovi Parametri Sociali dopo un nuovo accredito e richiedono una verifica all’apertura del mese successivo; eventuali modifiche esterne possono comunque essere corrette manualmente dal player. La Dialettica non compare perché non subisce la perdita mensile automatica."));
-    det.appendChild(el("div","calc-rule","Regola mensile automatica: per Popolarità e Punti Virtuosi/Sinistri <b>0–3 post = −1</b> · <b>4–9 post = −0,5</b> · <b>10+ post = nessuna variazione</b>. Per il <b>Prestigio degli Adulti</b>: <b>0–3 post = −1</b>; con <b>4+ post = +1</b> soltanto se il valore di partenza è inferiore a 71, senza superare 71 tramite questo bonus. Dialettica esclusa."));
+    det.appendChild(el("p","quick-help","<b>Come si usa:</b> la prima volta inserisci i valori attuali della Scheda e premi «Salva valori attuali». Poi apri il mese da accreditare: il Tool calcola automaticamente i nuovi valori."));
     var state=accreditiData._staffState||{},values=normalizeStaffValues(tipo,state.values||{}),defs=staffFieldDefs(tipo),ready=staffValuesReady(tipo,values),status=el("div",ready.ok?"staff-value-ok":"staff-value-missing",ready.ok?"✓ Valori di base configurati":"⚠ Prima configurazione necessaria: "+ready.missing.join(", "));det.appendChild(status);
     var grid=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,d.label+(d.required?"":" (facoltativo)")),inp=createNumberInput(d,values[d.key]);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);grid.appendChild(cell);}det.appendChild(grid);
-    if(tipo==="adulto")det.appendChild(el("p","small-note","Prestigio: per gli Adulti viene gestito automaticamente anche in base all’attività mensile. Con 0–3 post perde −1; con almeno 4 post guadagna +1 finché il valore di partenza è inferiore a 71. Il bonus da attività non può portarlo oltre 71; da 71 in poi può crescere soltanto tramite meriti ONGame. Nel campo extra inserisci eventuali bonus/malus di Prestigio dovuti ad altre cause (FantaWiz, Quest, Eventi, decisioni del Narratore, correzioni): questi possono portarlo oltre 71, sempre entro il limite generale 0–100. Punti Virtuosi/Sinistri restano tra 0 e 30; gli eventuali limiti più restrittivi dovuti all’Allineamento vanno comunque verificati dallo Staff."));
     var actions=el("div","staff-actions"),save=el("button","action small","Salva valori attuali");actions.appendChild(save);det.appendChild(actions);
     save.addEventListener(EV,function(){var next=readInputsByDefs(defs,inputs),r=staffValuesReady(tipo,next);if(!r.ok){alert("Compila almeno: "+r.missing.join(", ")+".");return;}save.disabled=true;window.fbSaveStaffValues(accreditiCollection,pgEntry.id,tipo,normalizeStaffValues(tipo,next),values).then(function(res){if(res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{save.disabled=false;alert(applyErrorMessage(res.code));}});});
 
@@ -1576,7 +1654,7 @@
     var appliedSeq=[];for(var asi=0;asi<staffSeq.length;asi++){var ask=staffSeq[asi],asr=staffMonths[ask];if(asr&&asr.applied!==false){appliedSeq.push(ask);}}
     if(appliedSeq.length){
       var hist=el("details","stage");hist.appendChild(el("summary",null,"📚 Storico accrediti applicati ("+appliedSeq.length+")"));
-      hist.appendChild(el("p","small-note","Lo storico resta disponibile anche dopo la pulizia periodica della Camera Blindata. Solo l’ultimo accredito applicato può essere revocato con ripristino automatico dei valori; in questo modo puoi recuperarlo anche se la CB originale non è più presente nel database."));
+      hist.appendChild(el("p","small-note","Da qui puoi controllare gli accrediti già applicati e revocare in sicurezza l’ultimo, se serve."));
       for(var ahi=appliedSeq.length-1;ahi>=0;ahi--)(function(recordKey,isLast){
         var rec=staffMonths[recordKey]||{},row=el("div","history-row"),meta=(rec.monthName||recordKey)+" — "+Math.max(0,parseInt(rec.postCount,10)||0)+" post"+(rec.source==="zero"?" · accredito 0 post":"");
         row.appendChild(el("b",null,meta));
@@ -1591,7 +1669,7 @@
       det.appendChild(hist);
     }
 
-    var zero=el("div","zero-month");zero.appendChild(el("div","calc-extra-title","PG senza CB del mese / 0 post"));zero.appendChild(el("p","small-note","Usalo quando il PG non ha creato alcun Mese nel Tracker: 0 post rientra nella fascia 0–3 e comporta −1 ai Parametri Sociali, esclusa Dialettica."));var zr=el("div","zero-month-row"),zc=el("div"),zl=el("label",null,"Mese da registrare"),zs=el("select"),monthNames=allAvailableMonthNames();if(!monthNames.length){var now=new Date(),mn=["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];monthNames=[mn[now.getMonth()]+" "+now.getFullYear()];}for(var zmi=0;zmi<monthNames.length;zmi++){var zo=el("option",null,monthNames[zmi]);zo.value=monthNames[zmi];if(monthNames[zmi]===meseRiepilogoSelezionato)zo.selected=true;zs.appendChild(zo);}zc.appendChild(zl);zc.appendChild(zs);zr.appendChild(zc);zero.appendChild(zr);var zextra=makeExtraInputs(tipo);zero.appendChild(el("div","calc-extra-title","Premi/malus extra del mese (Quest, Eventi, Prestigio, correzioni ecc.)"));zero.appendChild(zextra.wrap);var zprev=el("div","calc-preview");zero.appendChild(zprev);var zstatus=el("div","small-note");zero.appendChild(zstatus);var zbtn=el("button","action small","Accredita 0 post e aggiorna valori");zero.appendChild(zbtn);det.appendChild(zero);
+    var zero=el("div","zero-month");zero.appendChild(el("div","calc-extra-title","PG senza Camera Blindata del mese / 0 post"));zero.appendChild(el("p","small-note","Usalo solo se il PG non ha creato il Mese nel proprio Elfo."));var zr=el("div","zero-month-row"),zc=el("div"),zl=el("label",null,"Mese da registrare"),zs=el("select"),monthNames=allAvailableMonthNames();if(!monthNames.length){var now=new Date(),mn=["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];monthNames=[mn[now.getMonth()]+" "+now.getFullYear()];}for(var zmi=0;zmi<monthNames.length;zmi++){var zo=el("option",null,monthNames[zmi]);zo.value=monthNames[zmi];if(monthNames[zmi]===meseRiepilogoSelezionato)zo.selected=true;zs.appendChild(zo);}zc.appendChild(zl);zc.appendChild(zs);zr.appendChild(zc);zero.appendChild(zr);var zextra=makeExtraInputs(tipo);zero.appendChild(el("div","calc-extra-title","Premi/malus extra del mese (Quest, Eventi, Prestigio, correzioni ecc.)"));zero.appendChild(zextra.wrap);var zprev=el("div","calc-preview");zero.appendChild(zprev);var zstatus=el("div","small-note");zero.appendChild(zstatus);var zbtn=el("button","action small","Accredita 0 post e aggiorna valori");zero.appendChild(zbtn);det.appendChild(zero);
     function zeroAppliedEntry(){return findAppliedRecordEntryForMonth(accreditiData,null,normalizeMonthName(zs.value));}
     function refreshZeroPreview(){var entry=zeroAppliedEntry(),exst=entry?entry.record:null;zbtn.disabled=false;var base=normalizeStaffValues(tipo,(accreditiData._staffState&&accreditiData._staffState.values)||{}),extra=readInputsByDefs(defs,zextra.inputs),rec=computeStaffMonth(tipo,0,0,0,base,extra,zs.value,"zero","");if(exst){renderCalcPreview(zprev,tipo,exst);var lastKey=appliedSeq.length?appliedSeq[appliedSeq.length-1]:"",sameAfter=stableJson(base)===stableJson(normalizeStaffValues(tipo,exst.after||{}));if(exst.source==="zero"&&entry.key===lastKey&&sameAfter){zbtn.textContent="Revoca accredito 0 post";zstatus.textContent="✅ Mese a 0 post già applicato ai valori correnti.";}else{zbtn.textContent="Gestisci dallo Storico accrediti";zbtn.disabled=true;zstatus.textContent="✅ "+canonicalMonthLabel(zs.value)+" è già stato accreditato con "+Math.max(0,parseInt(exst.postCount,10)||0)+" Post. "+(exst.source==="zero"?"Per una revoca protetta o con variazioni successive, usa":"Usa")+" lo Storico accrediti applicati.";}return exst;}zbtn.textContent="Accredita 0 post e aggiorna valori";zstatus.textContent="";renderCalcPreview(zprev,tipo,rec);return rec;}zs.addEventListener("change",refreshZeroPreview);Object.keys(zextra.inputs).forEach(function(k){zextra.inputs[k].addEventListener("input",refreshZeroPreview);});refreshZeroPreview();
     zbtn.addEventListener(EV,function(){var entry=zeroAppliedEntry(),existing=entry?entry.record:null,rk=zeroMonthRecordKey(zs.value);if(existing){if(existing.source!=="zero"){alert(canonicalMonthLabel(zs.value)+" risulta già accreditato con "+Math.max(0,parseInt(existing.postCount,10)||0)+" Post. Usa lo Storico accrediti applicati per gestirlo.");return;}if(!confirm("Revocare l'accredito a 0 post di "+existing.monthName+" e ripristinare i valori precedenti?"))return;zbtn.disabled=true;window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,entry.key,"").then(function(res){if(res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{zbtn.disabled=false;alert(applyErrorMessage(res.code));}});return;}var base=(accreditiData._staffState&&accreditiData._staffState.values)||{},rr=staffValuesReady(tipo,base);if(!rr.ok){alert("Prima salva i valori correnti da Scheda PG.");return;}var norm=normalizeMonthName(zs.value),mesi=pgEntry.data.MESI||[];for(var zi=0;zi<mesi.length;zi++){if(!isImportedStudentMonth(mesi[zi])&&normalizeMonthName(mesi[zi].nome)===norm){alert("Questo PG possiede già una CB per "+canonicalMonthLabel(zs.value)+": usa il calcolatore nella riga di quel Mese.");return;}}var rec=refreshZeroPreview();if(!confirm("Accreditare "+pgEntry.id+" per "+rec.monthName+" con 0 post e aggiornare i valori correnti?"))return;zbtn.disabled=true;window.fbApplyStaffMonth(accreditiCollection,pgEntry.id,rk,"",rec,normalizeStaffValues(tipo,base),pgEntry.data&&pgEntry.data._dbRevision,null).then(function(res){if(res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{zbtn.disabled=false;alert(applyErrorMessage(res.code));}});});
@@ -1599,8 +1677,8 @@
   }
 
   function appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,gMese,ppMese,box,statusLbl){
-    var rk=monthRecordKey(mese),appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,staffState=accreditiData._staffState||{},base=staffState.values||{},ready=staffValuesReady(tipoPg,base),calc=el("details","month-calc");calc.appendChild(el("summary",null,tracked?"🧮 Calcolo applicato ai valori correnti":"🧮 Calcola nuovi valori da riportare in Scheda"));
-    if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);calc.appendChild(el("p","small-note","Questi valori sono già diventati la base automatica per il mese successivo. Deselezionando «Accreditato» verranno ripristinati i valori precedenti soltanto se questo è l'ultimo mese applicato."));row.appendChild(calc);return;}
+    var rk=monthRecordKey(mese),appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,staffState=accreditiData._staffState||{},base=staffState.values||{},ready=staffValuesReady(tipoPg,base),calc=el("details","month-calc");calc.appendChild(el("summary",null,tracked?"🧮 Variazioni già applicate":"🧮 Variazioni Scheda"));
+    if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);calc.appendChild(el("p","small-note","Valori già applicati. Se devi correggere il mese, revoca prima l’accredito."));row.appendChild(calc);return;}
     if(accreditiData[mese.id]){calc.appendChild(el("p","legacy-credit","Questo accredito è precedente al nuovo calcolatore. Non vengono applicate retroattivamente variazioni ai valori correnti: inizializza i valori dalla Scheda PG e il calcolo partirà dai prossimi accrediti."));row.appendChild(calc);return;}
     if(!ready.ok)calc.appendChild(el("div","warning-alert","⚠ Prima configura i valori correnti nella sezione «Valori correnti da Scheda PG». Mancano: <b>"+ready.missing.join(", ")+"</b>."));
     var extra=makeExtraInputs(tipoPg);calc.appendChild(el("div","calc-extra-title","Premi/malus extra del mese (Quest, Eventi, Prestigio, correzioni ecc.)"));calc.appendChild(extra.wrap);var prev=el("div","calc-preview");calc.appendChild(prev);var defs=staffFieldDefs(tipoPg);
@@ -1609,222 +1687,25 @@
     row.appendChild(calc);
   }
 
-  function buildPgCard(pgEntry, accreditiCollection){
-    var card = el("details", "card pg-card");
-    var mesi = pgEntry.data.MESI ? pgEntry.data.MESI : [];
-    var summary=el("summary","pg-card-summary");
-    summary.appendChild(el("span","pg-card-name",pgEntry.id));
-    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
-      summary.appendChild(el("span","delete-request-badge","⚠ RICHIESTA ELIMINAZIONE"));
+  function buildPgCard(pgEntry,accreditiCollection){
+    var card=el("div","card pg-card"),mesi=Array.isArray(pgEntry.data.MESI)?pgEntry.data.MESI:[],header=el("button","pg-card-summary");header.type="button";header.setAttribute("aria-expanded",openPgCards[pgEntry.id]?"true":"false");var title=el("span","pg-card-name",pgEntry.id),meta=el("span","pg-card-meta",mesi.length+" mesi · ultima modifica "+fmtDateTime(pgEntry.data&&pgEntry.data._lastModifiedAt));header.appendChild(title);if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE)header.appendChild(el("span","delete-request-badge","⚠ ELIMINAZIONE"));header.appendChild(meta);card.appendChild(header);
+    var body=el("div","pg-card-body");body.hidden=!openPgCards[pgEntry.id];card.appendChild(body);header.addEventListener(EV,function(){openPgCards[pgEntry.id]=!openPgCards[pgEntry.id];body.hidden=!openPgCards[pgEntry.id];header.setAttribute("aria-expanded",openPgCards[pgEntry.id]?"true":"false");});
+    if(lastAccredited&&lastAccredited.pgId===pgEntry.id){openPgCards[pgEntry.id]=true;body.hidden=false;header.setAttribute("aria-expanded","true");}
+    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){var req=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l’eliminazione.</b>");var dis=el("button","action small","Annulla richiesta");dis.addEventListener(EV,function(){var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";dis.disabled=true;window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){if(ok)caricaTutto(function(){renderApp();});else{dis.disabled=false;alert("Operazione non riuscita.");}});});req.appendChild(dis);body.appendChild(req);}
+    var tabs=el("div","pg-tabs"),panels={},active=pgActiveTabs[pgEntry.id]||"credit";[["credit","✅ Accredito"],["player","✏️ Dati Player"],["manage","⚙️ Gestione"]].forEach(function(x){var b=el("button","pg-tab"+(active===x[0]?" active":""),x[1]);b.type="button";b.addEventListener(EV,function(){pgActiveTabs[pgEntry.id]=x[0];Object.keys(panels).forEach(function(k){panels[k].hidden=k!==x[0];});var bs=tabs.querySelectorAll(".pg-tab");for(var i=0;i<bs.length;i++)bs[i].classList.remove("active");b.classList.add("active");});tabs.appendChild(b);var p=el("div","pg-tab-panel");p.hidden=active!==x[0];panels[x[0]]=p;});body.appendChild(tabs);body.appendChild(panels.credit);body.appendChild(panels.player);body.appendChild(panels.manage);
+    panels.credit.appendChild(el("div","quick-help","<b>Flusso rapido:</b> controlla il mese → verifica il calcolo → spunta «Da accreditare» → copia la stringa Registro che compare qui."));
+    var cacheKey=accreditiCollection+"__"+pgEntry.id;
+    function renderWithAcc(accreditiData){
+      panels.credit.innerHTML="";panels.credit.appendChild(el("div","quick-help","<b>Flusso rapido:</b> controlla il mese → verifica il calcolo → spunta «Da accreditare» → copia la stringa Registro che compare qui."));appendStaffLedger(panels.credit,pgEntry,accreditiCollection,accreditiData);
+      var mode=pgMonthFilters[pgEntry.id]||"pending",filter=el("div","month-filter"),fc=el("div");fc.appendChild(el("label",null,"Mesi da mostrare"));var fs=el("select");[["pending","Da accreditare"],["all","Tutti"],["done","Accreditati"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];if(mode===x[0])o.selected=true;fs.appendChild(o);});fs.addEventListener("change",function(){pgMonthFilters[pgEntry.id]=fs.value;renderWithAcc(accreditiData);});fc.appendChild(fs);filter.appendChild(fc);panels.credit.appendChild(filter);
+      var rendered=0,ordered=mesi.slice().sort(function(a,b){return monthKey(b&&b.nome)-monthKey(a&&a.nome);});for(var m=0;m<ordered.length;m++)(function(mese){var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),isDone=!!accreditiData[mese.id]||!!appliedEntry,isFocus=!!(lastAccredited&&lastAccredited.pgId===pgEntry.id&&String(lastAccredited.meseId)===String(mese.id));if(mode==="pending"&&isDone&&!isFocus)return;if(mode==="done"&&!isDone)return;rendered++;var row=el("div","mese-row"+(isDone?" is-accredited":"")+(isFocus?" is-focus":"")),postsMese=Array.isArray(mese.posts)?mese.posts:[],tipoPg=accreditiCollection==="accrediti_adulti"?"adulto":"studente",postValidi=validPostCount(postsMese),g=totaleG(tipoPg,postsMese,mese),pp=totalePP(postsMese,mese),info=el("div","mese-info");info.appendChild(el("div","mese-title",(mese.nome||"(mese senza nome)")+" — "+postValidi+" Post — "+g+" G — "+pp+" PP"));
+        var bonuses=narratorAllBonuses(mese);for(var bi=0;bi<bonuses.length;bi++){var b=bonuses[bi],count=narratorBonusCount(postsMese,b),parts=[];if(b.pp>0)parts.push("+"+b.pp+" PP/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.galeoni>0)parts.push("+"+b.galeoni+" G/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.altro)parts.push(b.altro);if(b.modalita==="first")parts.push(count+"/"+postValidi+" Post con bonus · primi "+b.primiPost);else if(b.modalita==="all")parts.push(count+"/"+postValidi+" Post con bonus");else if(b.maxUtilizzi>0)parts.push("utilizzi "+narratorBonusCurrentUses(postsMese,b)+"/"+b.maxUtilizzi);else parts.push("utilizzi "+count);info.appendChild(el("div","cb-notes","<b>Bonus:</b> "+narratorBonusName(b,bi)+" — "+parts.join(" · ")));}
+        var noteParts=[];for(var n=0;n<postsMese.length;n++){var nt=String(postsMese[n]&&postsMese[n].nota||"").trim();if(nt)noteParts.push("Post "+(n+1)+": "+nt);}if(noteParts.length)info.appendChild(el("div","cb-notes","<b>Note:</b> "+noteParts.join(" · ")));var bag=narratorBagWarnings(mese,postsMese);for(var bw=0;bw<bag.length;bw++)info.appendChild(el("div",bag[bw].kind==="remove"?"bag-remove-warning":"bag-update-warning",bag[bw].text));row.appendChild(info);
+        var chk=el("div","chk-line");if(isImportedStudentMonth(mese)){chk.appendChild(el("span","small-note","📦 Storico importato"));}else{var box=el("input");box.type="checkbox";box.checked=isDone;var status=el("span",isDone?"status-ok":"status-pending",isDone?"Accreditato":"Da accreditare");if(!isDone){var due=[g+" G",pp+" PP"],alt=allBonusAltro(mese,postsMese);if(alt)due.push("Altro: "+alt);info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+due.join(" · ")));}box.addEventListener(EV,function(){var nuovo=box.checked,currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;box.disabled=true;if(nuovo&&box._staffApply){promise=box._staffApply(true);}else if(!nuovo&&stored&&stored.applied!==false){var currentStaff=normalizeStaffValues(tipoPg,(accreditiData._staffState&&accreditiData._staffState.values)||{}),afterStaff=normalizeStaffValues(tipoPg,stored.after||{}),hasExternal=stableJson(currentStaff)!==stableJson(afterStaff),opts=null;if(hasExternal){var projected=preservedValuesAfterRevoke(tipoPg,stored,currentStaff),extLines=revokeExternalSummary(tipoPg,stored,currentStaff,projected),bounds=revokeBoundWarnings(tipoPg,stored,currentStaff),msg="Sono presenti variazioni successive all’accredito di "+(stored.monthName||mese.nome)+".\n\nLa revoca manterrà queste variazioni e rimuoverà soltanto l’effetto dell’accredito."+(extLines.length?"\n\n"+extLines.join("\n"):"")+(bounds.length?"\n\nATTENZIONE: "+bounds.join(", ")+" ha/hanno toccato un limite minimo o massimo. Verifica il risultato con la Scheda PG dopo la revoca.":"");if(!confirm(msg)){box.checked=true;box.disabled=false;return;}opts={preserveExternal:true,expectedCurrentValues:currentStaff,nextValues:projected};}promise=window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,currentEntry.key,stored.meseId?String(stored.meseId):"",opts);}else{promise=window.fbSetAccredito(accreditiCollection,pgEntry.id,String(mese.id),nuovo,pgEntry.data&&pgEntry.data._dbRevision,mese);}Promise.resolve(promise).then(function(res){if(res&&res.ok){lastAccredited=nuovo?{pgId:pgEntry.id,meseId:mese.id}:null;if(nuovo){meseRiepilogoSelezionato=canonicalMonthLabel(mese.nome);}openPgCards[pgEntry.id]=true;pgActiveTabs[pgEntry.id]="credit";clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{box.checked=!nuovo;box.disabled=false;if(res&&res.code==="missing-values")alert("Prima salva i valori correnti della Scheda PG.");else alert(applyErrorMessage(res&&res.code));}});});chk.appendChild(box);chk.appendChild(status);row.appendChild(chk);appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,g,pp,box,status);}
+        if(isDone){var line=registryLineForMonth(pgEntry,accreditiCollection,accreditiData,mese);if(line){var reg=el("div","registry-inline");reg.appendChild(el("div","registry-inline-title","📋 Testo per il Registro"));var code=el("div","summary-code");code.textContent=line;reg.appendChild(code);var cp=el("button","copy-btn","Copia questa riga");cp.addEventListener(EV,function(){copyText(code.textContent,cp);});reg.appendChild(cp);row.appendChild(reg);}}panels.credit.appendChild(row);})(ordered[m]);if(!rendered)panels.credit.appendChild(el("p","small-note",mode==="pending"?"✓ Nessun Mese da accreditare.":"Nessun Mese in questa vista."));
+      appendPlayerDataEditor(panels.player,pgEntry,accreditiCollection,accreditiData);panels.manage.innerHTML="";appendLastModification(panels.manage,pgEntry.data);var dup=duplicateMonthNameCount(mesi);if(dup)panels.manage.appendChild(el("div","warning-alert","⚠ "+dup+" Mese/i con nome duplicato."));var dg=duplicateGlobalNumbersInData(pgEntry.data);if(dg.length)panels.manage.appendChild(el("div","warning-alert","⚠ Numeri globali duplicati: <b>"+dg.join(", ")+"</b>."));var manage=el("div","pg-manage"),archive=el("button","action small archive","Archivia PG"),del=el("button","action danger small","Elimina PG");archive.addEventListener(EV,function(){if(!confirm("Archiviare "+pgEntry.id+"?"))return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";archive.disabled=true;window.fbSetArchived(pc,pgEntry.id,true).then(function(ok){if(ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{archive.disabled=false;alert("Operazione non riuscita.");}});});del.addEventListener(EV,function(){var typed=prompt("Scrivi esattamente il nome del PG per eliminarlo definitivamente:\n"+pgEntry.id);if(typed!==pgEntry.id)return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";del.disabled=true;window.fbDeletePg(pc,accreditiCollection,pgEntry.id).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{del.disabled=false;alert("Eliminazione non riuscita.");}});});manage.appendChild(archive);manage.appendChild(del);appendArchiveUnlockButton(manage,pgEntry,accreditiCollection);panels.manage.appendChild(manage);appendPeriodicArchiveTools(panels.manage,pgEntry,accreditiCollection,accreditiData);appendHistoryTools(panels.manage,pgEntry,accreditiCollection);
     }
-    summary.appendChild(el("span","pg-card-meta",mesi.length+" mesi · ~"+firestoreDocUsage(stateSizeBytes(pgEntry.data))+" · ultima modifica "+fmtDateTime(pgEntry.data&&pgEntry.data._lastModifiedAt)));
-    card.appendChild(summary);
-    appendLastModification(card,pgEntry.data);
-    if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){
-      var reqBox=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l'eliminazione da questo Tool.</b><br>Se la richiesta è corretta, usa «Elimina senza esportare» qui sotto. Se invece va ignorata, annullala.");
-      var dismissReq=el("button","action small","Annulla richiesta");
-      dismissReq.type="button";
-      dismissReq.addEventListener(EV,function(){
-        if(!confirm("Annullare la richiesta di eliminazione di "+pgEntry.id+" senza cancellare il PG?"))return;
-        var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";
-        dismissReq.disabled=true;
-        window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){
-          if(ok){caricaTutto(function(){renderApp();});}
-          else{dismissReq.disabled=false;alert("Non è stato possibile annullare la richiesta.");}
-        });
-      });
-      reqBox.appendChild(dismissReq);
-      card.appendChild(reqBox);
-    }
-    var duplicateMesiCount = duplicateMonthNameCount(mesi);
-    if(duplicateMesiCount){
-      card.appendChild(el("div","warning-alert","⚠ Questo PG contiene "+duplicateMesiCount+" Mese/i con nome duplicato già presenti nello storico. I Tracker ora impediscono nuovi duplicati: rinomina una delle vecchie voci per evitare ambiguità nel riepilogo mensile."));
-    }
-    var duplicateGlobals=duplicateGlobalNumbersInData(pgEntry.data);
-    if(duplicateGlobals.length){card.appendChild(el("div","warning-alert","⚠ Numeri globali duplicati rilevati: <b>"+duplicateGlobals.join(", ")+"</b>. La pulizia periodica resterà bloccata finché questi riferimenti legacy non vengono verificati."));}
-    var manage=el("div","pg-manage");
-    var archiveBtn=el("button","action small archive","Archivia PG");
-    archiveBtn.addEventListener(EV,function(){
-      if(!confirm("Archiviare "+pgEntry.id+"? Il PG verrà congelato e nascosto dall'elenco attivo, ma i dati resteranno nel database.")){return;}
-      var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";
-      archiveBtn.disabled=true; window.fbSetArchived(pc,pgEntry.id,true).then(function(ok){ if(ok){ clearAccreditiCache(accreditiCollection,pgEntry.id); caricaTutto(function(){renderApp();}); } else {archiveBtn.disabled=false;alert("Errore durante l'archiviazione.");} });
-    });
-    var deleteBtn=el("button","action small danger","Elimina senza esportare");
-    deleteBtn.addEventListener(EV,function(){
-      var typed=prompt("ELIMINAZIONE DEFINITIVA: scrivi esattamente il nome del PG per confermare:\n"+pgEntry.id);
-      if(typed!==pgEntry.id){ if(typed!==null){alert("Nome non corrispondente: eliminazione annullata.");} return; }
-      var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti"; deleteBtn.disabled=true;
-      window.fbDeletePg(pc,accreditiCollection,pgEntry.id).then(function(res){var ok=res===true||(res&&res.ok===true);if(ok){clearAccreditiCache(accreditiCollection,pgEntry.id);if(res&&res.cleanupPending){alert("Il PG è stato eliminato definitivamente. La pulizia tecnica di Registro e snapshot resta pendente e verrà ritentata automaticamente.");}caricaTutto(function(){renderApp();});}else{deleteBtn.disabled=false;alert("Errore durante l'eliminazione.");} });
-    });
-    manage.appendChild(archiveBtn); manage.appendChild(deleteBtn); appendArchiveUnlockButton(manage,pgEntry,accreditiCollection); card.appendChild(manage);
-
-    if(mesi.length === 0){
-      card.appendChild(el("p", "small-note", "Nessun Mese attualmente conservato per questo PG."));
-      var emptyKey=accreditiCollection+"__"+pgEntry.id;
-      var ledgerHolder=el("div");card.appendChild(ledgerHolder);
-      function showEmptyTools(acc){ledgerHolder.innerHTML="";appendStaffLedger(ledgerHolder,pgEntry,accreditiCollection,acc);appendPeriodicArchiveTools(ledgerHolder,pgEntry,accreditiCollection,acc);}
-      if(accreditiCache[emptyKey]){ showEmptyTools(accreditiCache[emptyKey]); }
-      else { loadAccreditiCached(accreditiCollection,pgEntry.id).then(function(acc){showEmptyTools(acc);}).catch(function(e){console.error(e);ledgerHolder.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti di questo PG."));}); }
-      appendHistoryTools(card,pgEntry,accreditiCollection);
-      return card;
-    }
-
-    var cacheKey = accreditiCollection + "__" + pgEntry.id;
-    var mesiWrap = el("div");
-    card.appendChild(mesiWrap);
-
-    function disegnaMesi(accreditiData){
-      mesiWrap.innerHTML = "";
-      appendStaffLedger(mesiWrap,pgEntry,accreditiCollection,accreditiData);
-      for(var m=0;m<mesi.length;m++){
-        (function(mese){
-          var row = el("div", "mese-row");
-          var nomeLbl = mese.nome !== "" ? mese.nome : "(mese senza nome)";
-          var postsMese = Array.isArray(mese.posts) ? mese.posts : [];
-
-          var info = el("div", "mese-info");
-          var tipoPg = accreditiCollection === "accrediti_adulti" ? "adulto" : "studente";
-          var postValidiMese = validPostCount(postsMese);
-          var gMese = totaleG(tipoPg, postsMese, mese);
-          var ppMese = totalePP(postsMese,mese);
-          info.appendChild(el("div", "mese-title", nomeLbl + " \u2014 " + postValidiMese + " post \u2014 " + gMese + " G \u2014 " + ppMese + " PP"));
-          var monthBonuses=narratorAllBonuses(mese);
-          for(var mbi=0;mbi<monthBonuses.length;mbi++){
-            var mb=monthBonuses[mbi],eventLine=el("div","cb-notes"),bonusCount=narratorBonusCount(postsMese,mb),eventParts=[];
-            eventLine.appendChild(el("span","cb-notes-title","Bonus: "));
-            if(mb.modalita==="posts"&&mb.valore==="variable"){
-              var sumPP=0,sumG=0;
-              for(var _mbp=0;_mbp<postsMese.length;_mbp++){sumPP+=narratorBonusPPOnPost(postsMese[_mbp],mb);sumG+=narratorBonusGOnPost(postsMese[_mbp],mb);}
-              eventParts.push("variabile per post su "+(mb.variabileSu==="pp"?"PP":(mb.variabileSu==="galeoni"?"Galeoni":"Altro")));
-              if(sumPP>0)eventParts.push("+"+sumPP+" PP totali");
-              if(sumG>0)eventParts.push("+"+sumG+" G totali");
-            }else{
-              if(mb.pp>0)eventParts.push("+"+mb.pp+" PP/"+(mb.modalita==="all"?"post":"utilizzo"));
-              if(mb.galeoni>0)eventParts.push("+"+mb.galeoni+" G/"+(mb.modalita==="all"?"post":"utilizzo"));
-              if(mb.altro)eventParts.push("Altro: "+mb.altro);
-            }
-            if(!eventParts.length)eventParts.push("nessun valore economico");
-            if(mb.modalita==="all")eventParts.push(bonusCount+"/"+postValidiMese+" post con bonus");
-            else if(mb.maxUtilizzi>0)eventParts.push("utilizzi "+narratorBonusCurrentUses(postsMese,mb)+"/"+mb.maxUtilizzi);
-            else eventParts.push("utilizzi "+bonusCount);
-            eventLine.appendChild(document.createTextNode(narratorBonusName(mb,mbi)+" — "+eventParts.join(" · ")));
-            info.appendChild(eventLine);
-
-            if(mb.modalita==="all"&&bonusCount<postValidiMese){
-              var excluded=el("div","cb-notes");
-              excluded.appendChild(el("span","cb-notes-title","Post esclusi da "+narratorBonusName(mb,mbi)+":"));
-              var anyExcluded=false;
-              for(var ebx=0;ebx<postsMese.length;ebx++){
-                var ebp=postsMese[ebx];
-                if(ebp&&isValidPostLink(ebp.link)&&narratorPostExcluded(ebp,mb)){
-                  anyExcluded=true;var exItem=el("div","cb-note-item");exItem.appendChild(document.createTextNode("Post "+(ebx+1)));
-                  var exIcon=makeLinkIcon(ebp.link,"Apri il post escluso dal bonus");if(exIcon)exItem.appendChild(exIcon);excluded.appendChild(exItem);
-                }
-              }
-              if(anyExcluded)info.appendChild(excluded);
-            }
-
-            if(mb.modalita==="posts"&&mb.valore==="variable"){
-              for(var vr=0;vr<postsMese.length;vr++){
-                var vp=postsMese[vr],rec=narratorUsageRecord(vp,mb);
-                if(!vp||!isValidPostLink(vp.link)||!rec||!rec.used)continue;
-                var rr=el("div","cb-note-item");
-                var res=mb.variabileSu==="pp"?("+"+(parseInt(rec.pp,10)||0)+" PP"):(mb.variabileSu==="galeoni"?("+"+(parseInt(rec.galeoni,10)||0)+" G"):String(rec.altro||""));
-                rr.appendChild(document.createTextNode("Post "+(vr+1)+": "+res+" "));
-                var rollIcon=makeLinkIcon(rec.link,"Apri il tiro del Bonus");if(rollIcon)rr.appendChild(rollIcon);
-                var missingRes=(mb.variabileSu==="pp"&&!((parseInt(rec.pp,10)||0)>0))||(mb.variabileSu==="galeoni"&&!((parseInt(rec.galeoni,10)||0)>0))||(mb.variabileSu==="altro"&&!String(rec.altro||"").trim());
-                if(missingRes||!isValidPostLink(rec.link)){rr.appendChild(el("span","status-pending"," ⚠ "+(missingRes?"risultato ":"")+(missingRes&&!isValidPostLink(rec.link)?"e ":"")+(!isValidPostLink(rec.link)?"link tiro ":"")+"mancante")); }
-                info.appendChild(rr);
-              }
-            }
-          }
-
-          for(var mbiSetup=0;mbiSetup<monthBonuses.length;mbiSetup++){
-            var setupBonus=monthBonuses[mbiSetup];
-            if(setupBonus.modalita==="posts" && (!setupBonus.usatiConfermati || !(setupBonus.maxUtilizzi>0))){
-              info.appendChild(el("div","bag-update-warning",narratorBonusName(setupBonus,mbiSetup)+": stato iniziale del premio incompleto — il PG deve indicare quanti utilizzi risultano già consumati in Scheda PG e il totale previsto."));
-            }
-          }
-          var bagWarnings=narratorBagWarnings(mese,postsMese);
-          for(var bwi=0;bwi<bagWarnings.length;bwi++){
-            info.appendChild(el("div",bagWarnings[bwi].kind==="remove"?"bag-remove-warning":"bag-update-warning",bagWarnings[bwi].text));
-          }
-
-          var notes = el("div", "cb-notes");
-          notes.appendChild(el("span", "cb-notes-title", "Nota:"));
-          var haNote = false;
-          for(var n=0;n<postsMese.length;n++){
-            var nota = postsMese[n] && postsMese[n].nota != null ? String(postsMese[n].nota).trim() : "";
-            if(nota !== ""){
-              haNote = true;
-              var item = el("div", "cb-note-item");
-              item.appendChild(document.createTextNode("Post " + (n + 1) + ": " + nota));
-              var postIcon = makeLinkIcon(postsMese[n].link, "Apri il post");
-              if(postIcon){ item.appendChild(postIcon); }
-              notes.appendChild(item);
-            }
-          }
-          if(!haNote){
-            notes.appendChild(document.createTextNode(" \u2014"));
-          }
-          info.appendChild(notes);
-          row.appendChild(info);
-
-          var chk = el("div", "chk-line");
-          if(isImportedStudentMonth(mese)){
-            chk.appendChild(el("span","small-note","📦 Storico importato da Studente — nessun nuovo accredito richiesto"));
-          }else{
-            var box = el("input"); box.type="checkbox";
-            var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome));
-            box.checked = !!accreditiData[mese.id] || !!appliedEntry;
-            var statusLbl = el("span", box.checked ? "status-ok" : "status-pending", box.checked ? "Accreditato" : "Da accreditare");
-            if(!box.checked){
-              var dueParts=[gMese+" G",ppMese+" PP"];
-              var dueAltro=allBonusAltro(mese,postsMese);
-              if(dueAltro){dueParts.push("Altro: "+dueAltro);}
-              var currentStaffValues=(accreditiData._staffState&&accreditiData._staffState.values)||{};
-              var dueSocial=socialLossPartsForSummary(tipoPg,validPostCount(postsMese),currentStaffValues);
-              if(dueSocial.length){dueParts.push("Parametri Sociali: "+dueSocial.join(", "));}
-              info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+dueParts.join(" · ")));
-            }
-            box.addEventListener(EV, function(){
-              var nuovoValore=box.checked,rk=monthRecordKey(mese),currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;
-              box.disabled=true;
-              if(nuovoValore && box._staffApply){promise=box._staffApply(true);}
-              else if(!nuovoValore && stored && stored.applied!==false){
-                var currentStaff=normalizeStaffValues(tipoPg,(accreditiData._staffState&&accreditiData._staffState.values)||{}),afterStaff=normalizeStaffValues(tipoPg,stored.after||{}),hasExternal=stableJson(currentStaff)!==stableJson(afterStaff),opts=null;
-                if(hasExternal){var projected=preservedValuesAfterRevoke(tipoPg,stored,currentStaff),extLines=revokeExternalSummary(tipoPg,stored,currentStaff,projected),bounds=revokeBoundWarnings(tipoPg,stored,currentStaff),msg="Sono presenti variazioni successive all’accredito di "+(stored.monthName||mese.nome)+".\n\nLa revoca manterrà queste variazioni e rimuoverà soltanto l’effetto dell’accredito."+(extLines.length?"\n\n"+extLines.join("\n"):"")+(bounds.length?"\n\nATTENZIONE: "+bounds.join(", ")+" ha/hanno toccato un limite minimo o massimo. Verifica il risultato con la Scheda PG dopo la revoca.":"");if(!confirm(msg)){box.checked=true;box.disabled=false;return;}opts={preserveExternal:true,expectedCurrentValues:currentStaff,nextValues:projected};}
-                promise=window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,currentEntry.key,stored.meseId?String(stored.meseId):"",opts);
-              }
-              else{promise=window.fbSetAccredito(accreditiCollection,pgEntry.id,""+mese.id,nuovoValore,pgEntry.data&&pgEntry.data._dbRevision,mese);}
-              Promise.resolve(promise).then(function(res){
-                if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}
-                else{box.checked=!nuovoValore;box.disabled=false;if(res&&res.code==="missing-values"){alert("Prima configura e salva i valori correnti da Scheda PG nella sezione dedicata.");}else{alert(applyErrorMessage(res&&res.code));}}
-              });
-            });
-            chk.appendChild(box);
-            chk.appendChild(statusLbl);
-          }
-          row.appendChild(chk);
-          if(!isImportedStudentMonth(mese)){appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,gMese,ppMese,box,statusLbl);}
-
-          mesiWrap.appendChild(row);
-        })(mesi[m]);
-      }
-      var oldTools=card.querySelector(".db-archive-tools.periodic-marker"); if(oldTools){oldTools.remove();}
-      var holder=el("div","periodic-holder"); holder.classList.add("periodic-marker"); card.appendChild(holder); appendPeriodicArchiveTools(holder,pgEntry,accreditiCollection,accreditiData);
-    }
-
-    if(accreditiCache[cacheKey]){
-      disegnaMesi(accreditiCache[cacheKey]);
-    } else {
-      mesiWrap.appendChild(el("p", "small-note", "Caricamento stato accrediti\u2026"));
-      loadAccreditiCached(accreditiCollection, pgEntry.id).then(function(data){
-        disegnaMesi(data);
-      }).catch(function(e){console.error(e);mesiWrap.innerHTML="";mesiWrap.appendChild(el("p","archive-blocked","Impossibile caricare lo stato degli accrediti. Ricarica il pannello prima di effettuare modifiche."));});
-    }
-
-    appendHistoryTools(card,pgEntry,accreditiCollection);
+    if(accreditiCache[cacheKey])renderWithAcc(accreditiCache[cacheKey]);else{panels.credit.appendChild(el("p","small-note","Caricamento accrediti…"));loadAccreditiCached(accreditiCollection,pgEntry.id).then(renderWithAcc).catch(function(e){console.error(e);panels.credit.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti."));});}
     return card;
   }
 
