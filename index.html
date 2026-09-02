@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v76 - un solo PG aperto alla volta nel Pannello Narratore, 02/09/2026 -->
+<!-- v78 - Prestigio mensile automatico con tetto assoluto a 71 + reminder contestuale, 02/09/2026 -->
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -218,7 +218,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
-  /* v70 - Prestigio Adulti: +1 con 4+ post fino alla soglia 71; 0–3 post = −1 */
+  /* v78 - Prestigio Adulti: con 4+ post il bonus automatico porta al massimo a 71; oltre 71 solo aumenti ONGame manuali; 0–3 post = −1 */
   /* v69 - Bonus «Tutti i post»: nessuna esclusione per singolo post */
   /* v68 - PP legacy dei singoli post ignorati; valgono solo i Bonus correnti */
   /* v66 - spaziatura interfaccia Narratore: pulsanti, riquadri e campi più separati */
@@ -1023,8 +1023,19 @@
     var n=Math.max(0,parseInt(postCount,10)||0),b=optionalNum(beforePrestigio);
     if(b===null)return 0;
     if(n<=3)return -1;
+    /* Con almeno 4 Post il gioco attivo assegna fino a +1 Prestigio,
+       ma la componente automatica non può mai portare il valore oltre 71.
+       Gli aumenti ONGame restano separati e vengono inseriti manualmente
+       dal Narratore come variazione extra. */
     if(b>=71)return 0;
-    return Math.max(0,Math.min(1,71-b));
+    return Math.round(Math.min(1,Math.max(0,71-b))*100)/100;
+  }
+  function prestigeThresholdReached(record){
+    if(!record||record.tipo!=="adulto")return false;
+    var posts=Math.max(0,parseInt(record.postCount,10)||0),before=optionalNum(record.before&&record.before.prestigio);
+    /* Reminder solo quando il normale +1 viene ridotto o bloccato dal tetto 71.
+       A 70 il +1 pieno porta esattamente a 71 e non serve segnalazione. */
+    return posts>=4&&before!==null&&before>70;
   }
   function socialLossPartsForSummary(tipo,postCount,before){
     var decay=monthlySocialDecay(postCount),parts=[];
@@ -1054,7 +1065,7 @@
   function computeStaffMonth(tipo,postCount,earnedG,earnedPP,before,extra,monthName,source,meseId){
     before=normalizeStaffValues(tipo,before||{});extra=extra||{};var defs=staffFieldDefs(tipo),decay=monthlySocialDecay(postCount),prestigeActivity=(tipo==="adulto"?monthlyPrestigeActivity(postCount,before.prestigio):decay),after={};
     for(var i=0;i<defs.length;i++){var d=defs[i],b=before[d.key];if(b===null){after[d.key]=null;continue;}var x=optionalNum(extra[d.key]);if(x===null)x=0;var delta=x;if(d.key==="galeoni")delta+=Number(earnedG)||0;else if(d.key==="pp")delta+=Number(earnedPP)||0;else if(d.kind==="social")delta+=(tipo==="adulto"&&d.key==="prestigio"?prestigeActivity:decay);var val=b+delta;if(Number.isFinite(d.min))val=Math.max(d.min,val);if(Number.isFinite(d.max))val=Math.min(d.max,val);after[d.key]=Math.round(val*100)/100;}
-    return {tipo:tipo,monthName:canonicalMonthLabel(monthName),monthNorm:normalizeMonthName(monthName),monthOrder:monthKey(monthName),source:source||"tracker",meseId:meseId==null?"":String(meseId),postCount:Math.max(0,parseInt(postCount,10)||0),earnedG:Number(earnedG)||0,earnedPP:Number(earnedPP)||0,decay:decay,prestigeActivity:prestigeActivity,before:before,extra:normalizeStaffExtras(tipo,extra),after:after};
+    return {tipo:tipo,monthName:canonicalMonthLabel(monthName),monthNorm:normalizeMonthName(monthName),monthOrder:monthKey(monthName),source:source||"tracker",meseId:meseId==null?"":String(meseId),postCount:Math.max(0,parseInt(postCount,10)||0),earnedG:Number(earnedG)||0,earnedPP:Number(earnedPP)||0,decay:decay,prestigeActivity:prestigeActivity,prestigeThresholdReached:(tipo==="adulto"&&Math.max(0,parseInt(postCount,10)||0)>=4&&optionalNum(before.prestigio)!==null&&optionalNum(before.prestigio)>70),before:before,extra:normalizeStaffExtras(tipo,extra),after:after};
   }
   function recordNet(record,key){if(!record||!record.before||!record.after)return 0;var b=optionalNum(record.before[key]),a=optionalNum(record.after[key]);return b===null||a===null?0:Math.round((a-b)*100)/100;}
   function preservedValuesAfterRevoke(tipo,record,current){
@@ -1075,7 +1086,7 @@
   }
   function pgDisplayName(pgEntry){var v=pgEntry&&pgEntry.data?String(pgEntry.data._displayName||"").trim():"";return v||String(pgEntry&&pgEntry.id||"");}
   function changedStaffParts(record){var defs=staffFieldDefs(record&&record.tipo),parts=[];for(var i=0;i<defs.length;i++){var d=defs[i],a=optionalNum(record&&record.after&&record.after[d.key]),net=recordNet(record,d.key);if(a===null||Math.abs(net)<.00001)continue;parts.push({key:d.key,label:d.label,after:a,net:net});}return parts;}
-  function registryLineFromRecord(pgName,record){var changed=changedStaffParts(record),credit=[];if(!changed.length)return "";for(var i=0;i<changed.length;i++){if(changed[i].key==="galeoni"||changed[i].key==="pp")credit.push(fmtSigned(changed[i].net)+" "+(changed[i].key==="galeoni"?"Galeoni":"PP"));}var lead="<b>"+pgName+":</b>"+(credit.length?" "+credit.join(", "):"");var parts=[];for(var j=0;j<changed.length;j++)parts.push(changed[j].label+" <b>"+fmtStaffNum(changed[j].after)+"</b> ("+fmtSigned(changed[j].net)+")");return lead+" | <b>Nuovi valori in Scheda:</b> "+parts.join("; ");}
+  function registryLineFromRecord(pgName,record){var changed=changedStaffParts(record),credit=[],cap=prestigeThresholdReached(record);if(!changed.length&&!cap)return "";for(var i=0;i<changed.length;i++){if(changed[i].key==="galeoni"||changed[i].key==="pp")credit.push(fmtSigned(changed[i].net)+" "+(changed[i].key==="galeoni"?"Galeoni":"PP"));}var lead="<b>"+pgName+":</b>"+(credit.length?" "+credit.join(", "):""),segments=[];var parts=[];for(var j=0;j<changed.length;j++)parts.push(changed[j].label+" <b>"+fmtStaffNum(changed[j].after)+"</b> ("+fmtSigned(changed[j].net)+")");if(parts.length)segments.push("<b>Nuovi valori in Scheda:</b> "+parts.join("; "));if(cap)segments.push("<b>Soglia massima Prestigio raggiunta</b>");return lead+(segments.length?" | "+segments.join(" | "):"");}
   function sheetValuesText(record){var changed=changedStaffParts(record),parts=[];for(var i=0;i<changed.length;i++)parts.push(changed[i].label+": "+fmtStaffNum(changed[i].after)+" ("+fmtSigned(changed[i].net)+")");return parts.join(" · ");}
   function registryLineForMonth(pgEntry,accreditiCollection,accreditiData,mese){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",entry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome));if(entry&&entry.record)return registryLineFromRecord(pgDisplayName(pgEntry),entry.record);
@@ -1643,7 +1654,7 @@
   function createNumberInput(def,value){var inp=el("input");inp.type="number";inp.step=String(def.step||1);if(Number.isFinite(def.min))inp.min=String(def.min);if(Number.isFinite(def.max))inp.max=String(def.max);if(value!==null&&value!==undefined&&Number.isFinite(Number(value)))inp.value=String(value);return inp;}
   function readInputsByDefs(defs,inputs){var o={};for(var i=0;i<defs.length;i++)o[defs[i].key]=optionalNum(inputs[defs[i].key]&&inputs[defs[i].key].value);return o;}
   function makeExtraInputs(tipo){var defs=staffFieldDefs(tipo),wrap=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,(d.kind==="resource"?"Extra ":"Variazione extra ")+d.label+" (+/−)");var inp=createNumberInput({step:d.step},0);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);wrap.appendChild(cell);}return {wrap:wrap,inputs:inputs};}
-  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b>";if(tipo==="adulto"){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
+  function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b>";if(tipo==="adulto"){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));if(prestigeThresholdReached(record)){holder.appendChild(el("span","calc-line","<b>Soglia massima Prestigio raggiunta</b>: il bonus mensile automatico viene limitato al valore massimo 71. Eventuali aumenti per meriti ONGame vanno inseriti manualmente come variazione extra."));}holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" PP</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",d.label+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
   function applyErrorMessage(code){if(code==="stale-values")return "I valori correnti non coincidono più con quelli usati per questo calcolo. Ricarica il pannello e ricontrolla i valori prima di riprovare.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Correggi prima manualmente i valori correnti se devi ricostruire lo storico.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
   function appendStaffLedger(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",det=el("details","staff-ledger"),sum=el("summary",null,"📊 Valori attuali della Scheda PG — base del prossimo accredito");det.appendChild(sum);
