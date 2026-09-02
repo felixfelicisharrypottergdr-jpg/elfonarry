@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v72 - UX Narratore, Taccuino Staff, registro sincronizzato e Bonus primi X Post, 02/09/2026 -->
+<!-- v73 - UX Narratore alleggerita: niente guida e niente reminder regolamentari, 02/09/2026 -->
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -246,11 +246,6 @@
   /* v71 - UX operativa Narratore */
   .narrator-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 16px}
   .narrator-toolbar .action{margin-top:0}
-  .narrator-tutorial{border:1px solid var(--gold);border-radius:9px;background:#fff8df;padding:14px 16px;margin:10px 0 18px;line-height:1.45}
-  .narrator-tutorial h3{margin:0 0 8px;font-size:1.05rem}
-  .tutorial-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px;margin-top:10px}
-  .tutorial-step{background:#fffdf5;border:1px solid #cdbc83;border-radius:7px;padding:10px;font-size:.8rem}
-  .tutorial-step b{display:block;margin-bottom:3px}
   .registry-top{margin:10px 0 20px;padding:14px;border:1px solid #b9a66c;border-radius:9px;background:rgba(255,253,245,.92)}
   .registry-top h3{margin:0 0 8px;font-size:1rem}
   .registry-top .summary-code{max-height:230px;overflow:auto}
@@ -290,7 +285,7 @@
   .compact-status{display:inline-block;padding:3px 7px;border-radius:999px;font-size:.7rem;font-weight:800;margin-left:5px}
   .compact-status.pending{background:#f7e5df;color:#8c2f2f}
   .compact-status.ok{background:#e5f1df;color:#35613d}
-  @media(max-width:700px){.elfo-password-row{grid-template-columns:1fr}.elfo-password-create{grid-template-columns:1fr}.editor-post{grid-template-columns:1fr}.tutorial-steps{grid-template-columns:1fr}}
+  @media(max-width:700px){.elfo-password-row{grid-template-columns:1fr}.elfo-password-create{grid-template-columns:1fr}.editor-post{grid-template-columns:1fr}}
 
 </style>
 </head>
@@ -755,8 +750,6 @@
   var pgActiveTabs = {};
   var pgMonthFilters = {};
   var lastAccredited = null;
-  var narratorGuideOpen = false;
-  var NARRATOR_GUIDE_KEY = "felix_narratore_guida_v1";
 
   function sanitizeHtml(html){
     var template=document.createElement("template"); template.innerHTML=String(html==null?"":html);
@@ -1280,16 +1273,6 @@
     parent.appendChild(det);
   }
 
-  function narratorGuideWasSeen(){try{return localStorage.getItem(NARRATOR_GUIDE_KEY)==="1";}catch(e){return false;}}
-  function markNarratorGuideSeen(){try{localStorage.setItem(NARRATOR_GUIDE_KEY,"1");}catch(e){}}
-  function renderNarratorGuide(parent){
-    var box=el("div","narrator-tutorial");box.appendChild(el("h3",null,"❔ Guida rapida del Pannello Narratore"));
-    box.appendChild(el("p","small-note","Questa guida spiega il flusso del Tool, non il regolamento."));
-    var steps=el("div","tutorial-steps");
-    [["1 · Cerca il PG","Scrivi il nome nella ricerca e apri la sua scheda."],["2 · Controlla","In «Accredito» verifica Post, Bonus e valori della Scheda. Se il Player ha sbagliato, usa «Dati Player» prima di accreditare."],["3 · Accredita","Spunta «Da accreditare». Il Tool salva l’accredito e aggiorna i valori correnti."],["4 · Copia sul Forum","Subito dopo compare la stringa «Testo per il Registro» nella scheda del PG. Il riepilogo di tutto il mese è anche in alto."],["5 · Correggi errori","In «Dati Player» puoi modificare o eliminare Mesi, Post e Bonus, correggere le altre sezioni e aprire anche il Taccuino personale."],["6 · Operazioni rare","Archivi, ripristini, password e Giochi Magici sono separati dalle operazioni quotidiane." ]].forEach(function(x){var d=el("div","tutorial-step");d.appendChild(el("b",null,x[0]));d.appendChild(document.createTextNode(x[1]));steps.appendChild(d);});
-    box.appendChild(steps);var close=el("button","action small","Chiudi guida");close.type="button";close.addEventListener(EV,function(){narratorGuideOpen=false;markNarratorGuideSeen();renderApp();});box.appendChild(close);parent.appendChild(box);
-  }
-
   function topLevelEditableKeys(data){
     var preferred=["TACCUINO","DISPENSA","LABORATORI","SERRE","RISERVE","POSTAZIONI","PIANTE","CREATURE","MEDICHERIA","FANTAWIZ","FANTAHOGWARTS","MISSIONI","STRUTTURE","NAV_ORDER","TITOLO_ELFO"];
     var out=[],seen={};data=data||{};
@@ -1332,9 +1315,7 @@
     p.appendChild(el("h2",null,"Pannello Narratore"));
     var toolbar=el("div","narrator-toolbar");
     var btnRefresh=el("button","action small","↻ Aggiorna");btnRefresh.addEventListener(EV,function(){btnRefresh.textContent="Aggiornamento…";caricaTutto(function(){renderApp();});});toolbar.appendChild(btnRefresh);
-    var help=el("button","action small","❔ Guida");help.type="button";help.addEventListener(EV,function(){narratorGuideOpen=!narratorGuideOpen;if(narratorGuideOpen)markNarratorGuideSeen();renderApp();});toolbar.appendChild(help);
     var btnLogout=el("button","action small","Esci");btnLogout.addEventListener(EV,function(){window.fbSignOut();});toolbar.appendChild(btnLogout);p.appendChild(toolbar);
-    if(narratorGuideOpen||!narratorGuideWasSeen()){renderNarratorGuide(p);}
 
     var registry=el("div","registry-top");registry.id="riepilogo-mensile";p.appendChild(registry);renderRiepilogoMensile(registry);
 
@@ -1679,7 +1660,7 @@
   function appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,gMese,ppMese,box,statusLbl){
     var rk=monthRecordKey(mese),appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,staffState=accreditiData._staffState||{},base=staffState.values||{},ready=staffValuesReady(tipoPg,base),calc=el("details","month-calc");calc.appendChild(el("summary",null,tracked?"🧮 Variazioni già applicate":"🧮 Variazioni Scheda"));
     if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);calc.appendChild(el("p","small-note","Valori già applicati. Se devi correggere il mese, revoca prima l’accredito."));row.appendChild(calc);return;}
-    if(accreditiData[mese.id]){calc.appendChild(el("p","legacy-credit","Questo accredito è precedente al nuovo calcolatore. Non vengono applicate retroattivamente variazioni ai valori correnti: inizializza i valori dalla Scheda PG e il calcolo partirà dai prossimi accrediti."));row.appendChild(calc);return;}
+    if(accreditiData[mese.id]){calc.appendChild(el("p","legacy-credit","Accredito storico: i valori correnti non vengono ricalcolati retroattivamente."));row.appendChild(calc);return;}
     if(!ready.ok)calc.appendChild(el("div","warning-alert","⚠ Prima configura i valori correnti nella sezione «Valori correnti da Scheda PG». Mancano: <b>"+ready.missing.join(", ")+"</b>."));
     var extra=makeExtraInputs(tipoPg);calc.appendChild(el("div","calc-extra-title","Premi/malus extra del mese (Quest, Eventi, Prestigio, correzioni ecc.)"));calc.appendChild(extra.wrap);var prev=el("div","calc-preview");calc.appendChild(prev);var defs=staffFieldDefs(tipoPg);
     function preview(){var current=(accreditiData._staffState&&accreditiData._staffState.values)||{},ex=readInputsByDefs(defs,extra.inputs),rec=computeStaffMonth(tipoPg,validPostCount(postsMese),gMese,ppMese,current,ex,mese.nome,"tracker",mese.id);renderCalcPreview(prev,tipoPg,rec);return rec;}Object.keys(extra.inputs).forEach(function(k){extra.inputs[k].addEventListener("input",preview);});preview();
