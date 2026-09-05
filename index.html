@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- v81 - Scheda Valori come unica base operativa: lettura e calcolo locale, salvataggio soltanto all’accredito, 04/09/2026 -->
+<!-- v82 - rinomina reale del PG con migrazione coordinata dei dati collegati, 05/09/2026 -->
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -218,6 +218,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v82 - il Nome PG è l’identità reale: rinomina amministrativa con migrazione dei collegamenti */
   /* v81 - Scheda Valori = unica base del nuovo accredito; nessun salvataggio alla lettura */
   /* v78 - Prestigio Adulti: con 4+ post il bonus automatico porta al massimo a 71; oltre 71 solo aumenti ONGame manuali; 0–3 post = −1 */
   /* v69 - Bonus «Tutti i post»: nessuna esclusione per singolo post */
@@ -302,6 +303,10 @@
   .registry-attention{margin:10px 0;padding:10px 12px;border-left:4px solid #b56b12;background:#fff0cf;color:#613b08;font-size:.82rem;font-weight:750;line-height:1.5}
   .pg-name-editor{margin:0 0 14px;padding:11px 12px;border:1px solid #b9a66c;border-radius:8px;background:#fffdf5}
   .pg-name-editor .archive-actions{align-items:end}
+  .pg-rename-warning{margin:8px 0 10px;padding:9px 10px;border:1px solid #b56b12;border-radius:7px;background:#fff0cf;color:#6d450b;font-size:.76rem;line-height:1.45}
+  .pg-rename-status{margin-top:8px;font-size:.76rem;font-weight:700;line-height:1.45}
+  .pg-rename-status.error{color:#8a2f2f}
+  .pg-rename-status.ok{color:#355b3a}
   .sheet-code-reader{margin:10px 0 14px;padding:13px 14px;border:2px solid #8fa985;border-radius:9px;background:#eef6ea}
   .sheet-code-reader h4{margin:0 0 7px}
   .sheet-code-reader textarea,.sheet-code-output textarea{width:100%;min-height:150px;resize:vertical;border:1px solid var(--gold);border-radius:6px;background:#fffdf5;padding:9px;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
@@ -325,7 +330,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-  import { getFirestore, collection, getDocs, doc, getDoc, setDoc, writeBatch, increment, runTransaction, serverTimestamp, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+  import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, writeBatch, increment, runTransaction, serverTimestamp, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
   import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 
@@ -572,6 +577,186 @@
       tx.set(pgRef,patch,{merge:true});
       tx.set(auditRef,narratorEvent(pgId,"Correzione dati Player",patch._lastAction,Array.isArray(changes)?changes:[]));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+
+  function renameCleanPgName(value){return String(value||"").trim().replace(/\s+/g," ");}
+  function renameTipoForPersonCollection(pc){return pc==="personaggi_adulti"?"adulto":"studente";}
+  function renamePasswordCollection(pc){return pc==="personaggi_adulti"?"elfo_passwords_adulti":"elfo_passwords_studenti";}
+  function renameAccreditiCollection(pc){return pc==="personaggi_adulti"?"accrediti_adulti":"accrediti_studenti";}
+  function renameOtherPersonCollection(pc){return pc==="personaggi_adulti"?"personaggi_studenti":"personaggi_adulti";}
+  function renamePgKind(pc){return pc==="personaggi_adulti"?"adulti":"studenti";}
+  function renameReplaceExactList(list,oldName,newName){
+    if(!Array.isArray(list))return list;
+    var out=[],seen={};
+    for(var i=0;i<list.length;i++){
+      var v=list[i]===oldName?newName:list[i], key=typeof v==="string"?"s:"+v:"j:"+stableJson(v);
+      if(!seen[key]){seen[key]=true;out.push(v);}
+    }
+    return out;
+  }
+  function renamePgRefValue(value,oldName,newName){
+    if(value===oldName)return newName;
+    if(Array.isArray(value))return value.map(function(v){return renamePgRefValue(v,oldName,newName);});
+    if(value&&typeof value==="object"){
+      var o=Object.assign({},value),keys=["nome","pgId","targetName","pg","personaggio"];
+      for(var i=0;i<keys.length;i++){var k=keys[i];if(o[k]===oldName)o[k]=newName;}
+      return o;
+    }
+    return value;
+  }
+  function renamePersonData(raw,oldName,newName,tipo,revision,archived){
+    var next=Object.assign({},raw||{});
+    delete next._displayName;
+    next._pgName=newName;
+    if(tipo==="studente"){
+      next.STUDENTE=Object.assign({},next.STUDENTE||{});
+      next.STUDENTE.nome=newName;
+    }
+    next._schemaVersion=Math.max(26,parseInt(next._schemaVersion,10)||0);
+    next._dbRevision=Math.max(1,parseInt(revision,10)||1);
+    next._archiviato=!!archived;
+    next._lastModifiedAt=serverTimestamp();
+    next._lastModifiedBy="narratore";
+    next._lastSessionId="";
+    next._lastAction="PG rinominato da "+oldName+" a "+newName;
+    return next;
+  }
+  function renameSnapshotState(state,newName,tipo){
+    if(!state||typeof state!=="object")return state;
+    var next=Object.assign({},state);next._pgName=newName;delete next._displayName;
+    if(tipo==="studente"&&next.STUDENTE&&typeof next.STUDENTE==="object"){
+      next.STUDENTE=Object.assign({},next.STUDENTE);next.STUDENTE.nome=newName;
+    }
+    return next;
+  }
+  async function renameCommitSets(items,merge){
+    for(var i=0;i<items.length;i+=350){
+      var b=writeBatch(fbDb),end=Math.min(i+350,items.length);
+      for(var j=i;j<end;j++){if(merge)b.set(items[j].ref,items[j].data,{merge:true});else b.set(items[j].ref,items[j].data);}
+      await b.commit();
+    }
+  }
+  async function renameCommitDeletes(refs){
+    for(var i=0;i<refs.length;i+=350){
+      var b=writeBatch(fbDb),end=Math.min(i+350,refs.length);
+      for(var j=i;j<end;j++)b.delete(refs[j]);
+      await b.commit();
+    }
+  }
+  async function renameSafeCollection(name){
+    try{return await getDocs(collection(fbDb,name));}catch(e){console.warn("Rinomina: raccolta opzionale non leggibile",name,e);return null;}
+  }
+  function renameErrorCode(e){return e&&e.code?String(e.code):(e&&e.message?String(e.message):"error");}
+
+  window.fbRenamePg = async function(personCollection,oldRaw,newRaw,expectedRevision){
+    if(!fbAuth.currentUser||fbAuth.currentUser.uid!==NARRATOR_UID)return {ok:false,code:"unauthorized"};
+    var oldName=renameCleanPgName(oldRaw),newName=renameCleanPgName(newRaw);
+    if(!oldName||!newName)return {ok:false,code:"invalid-name"};
+    if(newName.length>160||newName.indexOf("/")>=0)return {ok:false,code:"invalid-name"};
+    if(oldName===newName)return {ok:false,code:"same-name"};
+    var tipo=renameTipoForPersonCollection(personCollection),pgKind=renamePgKind(personCollection),accCollection=renameAccreditiCollection(personCollection),passCollection=renamePasswordCollection(personCollection),otherPc=renameOtherPersonCollection(personCollection);
+    var oldPgRef=doc(fbDb,personCollection,oldName),newPgRef=doc(fbDb,personCollection,newName),otherPgRef=doc(fbDb,otherPc,newName),oldAccRef=doc(fbDb,accCollection,oldName),newAccRef=doc(fbDb,accCollection,newName),oldPassRef=doc(fbDb,passCollection,oldName),newPassRef=doc(fbDb,passCollection,newName),oldTaccRef=doc(fbDb,"taccuini_personali",oldName),newTaccRef=doc(fbDb,"taccuini_personali",newName);
+    var originalArchived=false,locked=false,newParentCreated=false,cutover=false,linkedOriginals=[];
+    var oldAuditSnap=null,oldSnapshotSnap=null;
+    try{
+      var pre=await Promise.all([getDoc(oldPgRef),getDoc(newPgRef),getDoc(otherPgRef),getDoc(newAccRef),getDoc(newPassRef),getDoc(newTaccRef),getDocs(collection(fbDb,personCollection,newName,"audit")),getDocs(collection(fbDb,personCollection,newName,"snapshots"))]);
+      if(!pre[0].exists()||(pre[0].data()||{})._deleted)throw new Error("missing-pg");
+      if(pre[1].exists()||pre[2].exists()||pre[3].exists()||pre[4].exists()||pre[5].exists()||!pre[6].empty||!pre[7].empty)throw new Error("rename-target-exists");
+      var lockInfo=await runTransaction(fbDb,async function(tx){
+        var src=await tx.get(oldPgRef),same=await tx.get(newPgRef),other=await tx.get(otherPgRef);
+        if(!src.exists()||(src.data()||{})._deleted)throw new Error("missing-pg");
+        if(same.exists()||other.exists())throw new Error("rename-target-exists");
+        var data=src.data()||{},rev=Math.max(0,parseInt(data._dbRevision,10)||0),expected=Math.max(0,parseInt(expectedRevision,10)||0);
+        if(rev!==expected)throw new Error("stale-pg");
+        var wasArchived=!!data._archiviato;
+        tx.set(oldPgRef,{_archiviato:true,_dbRevision:rev+1,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastSessionId:"",_lastAction:"Rinomina in corso verso "+newName},{merge:true});
+        return {data:data,wasArchived:wasArchived,lockedRevision:rev+1};
+      });
+      locked=true;originalArchived=lockInfo.wasArchived;
+
+      var sessions=await getDocs(collection(fbDb,"elfo_edit_sessions")),sessionRefs=[];
+      sessions.forEach(function(d){var x=d.data()||{};if(x.pgId===oldName&&x.tipo===tipo)sessionRefs.push(d.ref);});
+      if(sessionRefs.length)await renameCommitDeletes(sessionRefs);
+
+      var core=await Promise.all([getDoc(oldAccRef),getDoc(oldPassRef),getDoc(oldTaccRef),getDocs(collection(fbDb,personCollection,oldName,"audit")),getDocs(collection(fbDb,personCollection,oldName,"snapshots"))]);
+      oldAuditSnap=core[3];oldSnapshotSnap=core[4];
+      var newData=renamePersonData(lockInfo.data,oldName,newName,tipo,lockInfo.lockedRevision+1,true);
+      await setDoc(newPgRef,newData);newParentCreated=true;
+
+      var coreSets=[];
+      if(core[0].exists())coreSets.push({ref:newAccRef,data:Object.assign({},core[0].data())});
+      if(core[1].exists()){var pw=Object.assign({},core[1].data(),{pgId:newName,tipo:tipo});coreSets.push({ref:newPassRef,data:pw});}
+      if(core[2].exists()){var tc=Object.assign({},core[2].data(),{pgId:newName});coreSets.push({ref:newTaccRef,data:tc});}
+      if(coreSets.length)await renameCommitSets(coreSets,false);
+
+      var historySets=[];
+      oldAuditSnap.forEach(function(d){var x=Object.assign({},d.data(),{pgId:newName});historySets.push({ref:doc(fbDb,personCollection,newName,"audit",d.id),data:x});});
+      oldSnapshotSnap.forEach(function(d){var x=Object.assign({},d.data(),{pgId:newName});if(x.state)x.state=renameSnapshotState(x.state,newName,tipo);historySets.push({ref:doc(fbDb,personCollection,newName,"snapshots",d.id),data:x});});
+      if(historySets.length)await renameCommitSets(historySets,false);
+      await setDoc(doc(collection(fbDb,personCollection,newName,"audit")),narratorEvent(newName,"Gestione PG","Rinominato PG da «"+oldName+"» a «"+newName+"»",[{path:"nome PG",before:oldName,after:newName}]));
+      await setDoc(doc(collection(fbDb,personCollection,newName,"snapshots")),snapshotEvent(newName,renameSnapshotState(lockInfo.data,newName,tipo),"Backup automatico della situazione precedente alla rinomina da "+oldName,true));
+
+      // Strutture condivise Adulti: il nome è anche identità di proprietario/membro/invitato.
+      if(tipo==="adulto"){
+        var shared=await renameSafeCollection("strutture_condivise_adulti"),sharedSets=[];
+        if(shared)shared.forEach(function(d){var x=d.data()||{},patch={},changed=false;
+          if(x.ownerId===oldName){patch.ownerId=newName;changed=true;}
+          ["memberIds","invitedIds","removedIds","seenBy"].forEach(function(k){if(Array.isArray(x[k])&&x[k].indexOf(oldName)>=0){patch[k]=renameReplaceExactList(x[k],oldName,newName);changed=true;}});
+          if(x.editingBy===oldName){patch.editingBy=newName;changed=true;}
+          if(x.updatedBy===oldName){patch.updatedBy=newName;changed=true;}
+          if(changed){patch.revision=Math.max(0,parseInt(x.revision,10)||0)+1;patch.updatedAt=serverTimestamp();linkedOriginals.push({ref:d.ref,data:x});sharedSets.push({ref:d.ref,data:patch});}
+        });
+        if(sharedSets.length)await renameCommitSets(sharedSets,true);
+      }
+
+      // Importazioni Medimagia ancora in attesa.
+      var heal=await renameSafeCollection("elfo_healing_imports"),healSets=[];
+      if(heal)heal.forEach(function(d){var x=d.data()||{},payload=x.payload&&typeof x.payload==="object"?x.payload:{},changed=x.targetName===oldName||payload.targetName===oldName;if(changed){var nextPayload=Object.assign({},payload);if(nextPayload.targetName===oldName)nextPayload.targetName=newName;linkedOriginals.push({ref:d.ref,data:x});healSets.push({ref:d.ref,data:{targetName:newName,payload:nextPayload}});}});
+      if(healSets.length){try{await renameCommitSets(healSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
+
+      // Staff Token: associazioni e usi restano legati allo stesso PG anche dopo il cambio nome.
+      var staff=await renameSafeCollection("staff_token"),staffSets=[];
+      if(staff)staff.forEach(function(d){var x=d.data()||{},arr=Array.isArray(x.pgAssociati)?x.pgAssociati:[],changed=false,nextArr=arr.map(function(v){if(v&&typeof v==="object"&&v.nome===oldName&&(!v.tipo||v.tipo===pgKind)){changed=true;return Object.assign({},v,{nome:newName});}return v;});if(changed){linkedOriginals.push({ref:d.ref,data:x});staffSets.push({ref:d.ref,data:{pgAssociati:nextArr}});}});
+      if(staffSets.length){try{await renameCommitSets(staffSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
+      var usages=await renameSafeCollection("staff_token_usi"),usageSets=[];
+      if(usages)usages.forEach(function(d){var x=d.data()||{};if(x.pgId===oldName&&x.pgKind===pgKind){linkedOriginals.push({ref:d.ref,data:x});usageSets.push({ref:d.ref,data:{pgId:newName}});}});
+      if(usageSets.length){try{await renameCommitSets(usageSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
+
+      // Eventuali richieste del Generatore Accrediti ancora pendenti: aggiorna solo i riferimenti PG dichiarati.
+      var pending=await renameSafeCollection("richieste_pending"),pendingSets=[];
+      if(pending)pending.forEach(function(d){var x=d.data()||{},arr=x.pgCoinvolti;if(Array.isArray(arr)){var changed=false,next=arr.map(function(v){var nv=renamePgRefValue(v,oldName,newName);if(stableJson(nv)!==stableJson(v))changed=true;return nv;});if(changed){linkedOriginals.push({ref:d.ref,data:x});pendingSets.push({ref:d.ref,data:{pgCoinvolti:next}});}}});
+      if(pendingSets.length)await renameCommitSets(pendingSets,true);
+
+      // Solo quando ogni collegamento è pronto il nuovo nome diventa visibile/apribile.
+      var staged=await getDoc(newPgRef);if(!staged.exists())throw new Error("rename-stage-missing");var stagedRev=Math.max(0,parseInt((staged.data()||{})._dbRevision,10)||0);
+      await setDoc(newPgRef,{_archiviato:originalArchived,_dbRevision:stagedRev+1,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastSessionId:"",_lastAction:"PG rinominato da "+oldName+" a "+newName},{merge:true});
+
+      cutover=true;
+      var oldHistoryRefs=[];oldAuditSnap.forEach(function(d){oldHistoryRefs.push(d.ref);});oldSnapshotSnap.forEach(function(d){oldHistoryRefs.push(d.ref);});
+      if(oldHistoryRefs.length)await renameCommitDeletes(oldHistoryRefs);
+      if(core[2].exists())await deleteDoc(oldTaccRef);
+      if(core[0].exists())await deleteDoc(oldAccRef);
+      await deleteDoc(oldPgRef);
+      if(core[1].exists())await deleteDoc(oldPassRef);
+      return {ok:true,oldName:oldName,newName:newName,closedSessions:sessionRefs.length,migratedShared:tipo==="adulto"};
+    }catch(e){
+      console.error("Rinomina PG non completata:",e);
+      var code=renameErrorCode(e);
+      if(!cutover){
+        // Ripristino best-effort: prima i riferimenti esterni, poi eventuale copia nuova, infine il vecchio PG.
+        try{for(var ri=linkedOriginals.length-1;ri>=0;ri--)await setDoc(linkedOriginals[ri].ref,linkedOriginals[ri].data);}catch(re){console.error("Rollback riferimenti rinomina:",re);}
+        if(newParentCreated){
+          try{var na=await getDocs(collection(fbDb,personCollection,newName,"audit")),ns=await getDocs(collection(fbDb,personCollection,newName,"snapshots")),rr=[];na.forEach(function(d){rr.push(d.ref);});ns.forEach(function(d){rr.push(d.ref);});if(rr.length)await renameCommitDeletes(rr);}catch(re){console.error(re);}
+          try{await deleteDoc(newTaccRef);}catch(re){}
+          try{await deleteDoc(newAccRef);}catch(re){}
+          try{await deleteDoc(newPgRef);}catch(re){}
+          try{await deleteDoc(newPassRef);}catch(re){}
+        }
+        if(locked){try{var live=await getDoc(oldPgRef);if(live.exists()){var rev=Math.max(0,parseInt((live.data()||{})._dbRevision,10)||0);await setDoc(oldPgRef,{_archiviato:originalArchived,_dbRevision:rev+1,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastSessionId:"",_lastAction:"Rinomina annullata: dati ripristinati"},{merge:true});}}catch(re){console.error("Rollback PG origine:",re);}}
+      }
+      return {ok:false,code:cutover?"rename-cleanup-partial":code};
+    }
   };
 
 
@@ -1243,7 +1428,7 @@
     for(var i=0;i<defs.length;i++){var d=defs[i];if(atBound(d,before[d.key])||atBound(d,after[d.key])||atBound(d,cur[d.key]))labels.push(d.label);}
     return labels;
   }
-  function pgDisplayName(pgEntry){var v=pgEntry&&pgEntry.data?String(pgEntry.data._displayName||"").trim():"";return v||String(pgEntry&&pgEntry.id||"");}
+  function pgDisplayName(pgEntry){return String(pgEntry&&pgEntry.id||"");}
   function changedStaffParts(record){var defs=staffFieldDefs(record&&record.tipo),parts=[];for(var i=0;i<defs.length;i++){var d=defs[i],a=optionalNum(record&&record.after&&record.after[d.key]),net=recordNet(record,d.key),debt=recordDebtSettlement(record,d.key);if(a===null||(!debt&&Math.abs(net)<.00001))continue;parts.push({key:d.key,label:d.label,after:a,net:net,debt:debt});}return parts;}
   function resourceMonthDelta(record,key){var base=key==="galeoni"?(Number(record&&record.earnedG)||0):(Number(record&&record.earnedPP)||0),extra=optionalNum(record&&record.extra&&record.extra[key]);return Math.round((base+(extra||0))*100)/100;}
   function registryDisplayLabel(key,label){if(key==="pp")return "Punti Post";return label;}
@@ -1487,7 +1672,29 @@
   function appendPlayerDataEditor(holder,pgEntry,accreditiCollection,accreditiData){
     holder.innerHTML="";holder.appendChild(el("div","quick-help","<b>Correzioni Player:</b> qui puoi sistemare ciò che il PG ha inserito senza aspettare che lo faccia lui. I Mesi già accreditati vanno prima revocati."));
     var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti",working=deepClone(pgEntry.data.MESI||[]);
-    var nameBox=el("div","pg-name-editor"),nameTitle=el("h4",null,"Nome del PG"),nameRow=el("div","archive-actions"),nameCell=el("div");nameCell.style.flex="1";nameCell.appendChild(el("label",null,"Nome visualizzato"));var nameInput=el("input");nameInput.type="text";nameInput.value=pgDisplayName(pgEntry);nameCell.appendChild(nameInput);nameRow.appendChild(nameCell);var nameSave=el("button","action small","Salva nome");nameSave.type="button";nameSave.addEventListener(EV,function(){var next=String(nameInput.value||"").trim();if(!next){alert("Inserisci il nome del PG.");return;}if(next===pgDisplayName(pgEntry)){return;}nameSave.disabled=true;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,{_displayName:next},"Aggiornato nome visualizzato del PG",[{path:"nome visualizzato",before:pgDisplayName(pgEntry),after:next}]).then(function(res){if(res&&res.ok){openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{nameSave.disabled=false;alert(applyErrorMessage(res&&res.code));}});});nameRow.appendChild(nameSave);nameBox.appendChild(nameTitle);nameBox.appendChild(el("p","small-note","È il nome mostrato nel pannello e nei testi da copiare sul Forum."));nameBox.appendChild(nameRow);holder.appendChild(nameBox);
+    var nameBox=el("div","pg-name-editor"),nameTitle=el("h4",null,"Rinomina il PG"),nameRow=el("div","archive-actions"),nameCell=el("div");
+    nameCell.style.flex="1";nameCell.appendChild(el("label",null,"Nuovo nome del Personaggio"));var nameInput=el("input");nameInput.type="text";nameInput.value=String(pgEntry.id||"");nameInput.maxLength=160;nameCell.appendChild(nameInput);nameRow.appendChild(nameCell);
+    var nameSave=el("button","action small","Rinomina PG");nameSave.type="button";nameRow.appendChild(nameSave);
+    var renameStatus=el("div","pg-rename-status","");
+    nameBox.appendChild(nameTitle);
+    nameBox.appendChild(el("div","pg-rename-warning","<b>Questa è una rinomina reale, non solo grafica.</b> Il nuovo nome diventerà quello con cui il Player apre e modifica il proprio Elfo. Camera Blindata, password, accrediti, Taccuino, storico e gli altri collegamenti supportati restano associati allo stesso Personaggio. Le sessioni di modifica già aperte vengono chiuse e il Player dovrà rientrare usando il nuovo nome."));
+    nameBox.appendChild(nameRow);nameBox.appendChild(renameStatus);holder.appendChild(nameBox);
+    nameSave.addEventListener(EV,function(){
+      var next=String(nameInput.value||"").trim().replace(/\s+/g," "),old=String(pgEntry.id||"");
+      renameStatus.textContent="";renameStatus.className="pg-rename-status";
+      if(!next){renameStatus.textContent="Inserisci il nuovo nome del PG.";renameStatus.className="pg-rename-status error";return;}
+      if(next===old){renameStatus.textContent="Il nome non è cambiato.";return;}
+      var typed=prompt("Stai per rinominare realmente «"+old+"» in «"+next+"».\n\nIl Player accederà poi all’Elfo con il NUOVO nome. I dati collegati verranno migrati e le eventuali sessioni già aperte saranno chiuse.\n\nPer confermare, scrivi esattamente il NUOVO nome:");
+      if(typed!==next)return;
+      nameSave.disabled=true;nameInput.disabled=true;renameStatus.textContent="Rinomina e migrazione dei dati in corso…";
+      window.fbRenamePg(pc,old,next,pgEntry.data&&pgEntry.data._dbRevision).then(function(res){
+        if(res&&res.ok){
+          renameStatus.textContent="✓ PG rinominato: da ora il Player userà «"+next+"».";renameStatus.className="pg-rename-status ok";
+          clearAccreditiCache(accreditiCollection,old);clearAccreditiCache(accreditiCollection,next);openOnlyPg(next);pgActiveTabs[next]="player";delete pgActiveTabs[old];
+          caricaTutto(function(){renderApp();});
+        }else{var msg=applyErrorMessage(res&&res.code);nameSave.disabled=false;nameInput.disabled=false;renameStatus.textContent=msg;renameStatus.className="pg-rename-status error";alert(msg);if(res&&res.code==="rename-cleanup-partial"){openOnlyPg(next);pgActiveTabs[next]="player";}else{openOnlyPg(old);pgActiveTabs[old]="player";}caricaTutto(function(){renderApp();});}
+      }).catch(function(e){console.error(e);nameSave.disabled=false;nameInput.disabled=false;renameStatus.textContent="Rinomina non riuscita. Nessuna modifica dovrebbe essere stata confermata: ricarica il pannello e controlla.";renameStatus.className="pg-rename-status error";});
+    });
     var box=el("div","player-editor");box.appendChild(el("h4",null,"Camera Blindata · Mesi, Post e Bonus"));
     if(!working.length){box.appendChild(el("p","small-note","Nessun Mese presente."));holder.appendChild(box);}else{
       var sel=el("select");for(var i=working.length-1;i>=0;i--){var o=el("option",null,(working[i].nome||"(senza nome)")+" · "+validPostCount(working[i].posts||[])+" Post");o.value=String(i);sel.appendChild(o);}box.appendChild(sel);var area=el("div");box.appendChild(area);
@@ -1816,7 +2023,7 @@
   function readInputsByDefs(defs,inputs){var o={};for(var i=0;i<defs.length;i++)o[defs[i].key]=optionalNum(inputs[defs[i].key]&&inputs[defs[i].key].value);return o;}
   function makeExtraInputs(tipo){var defs=staffFieldDefs(tipo),wrap=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,(d.kind==="resource"?"Extra ":"Variazione extra ")+d.label+" (+/−)");var inp=createNumberInput({step:d.step},0);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);wrap.appendChild(cell);}return {wrap:wrap,inputs:inputs};}
   function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b>";if(tipo==="adulto"&&optionalNum(record.before&&record.before.prestigio)!==null){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));if(prestigeThresholdReached(record)){holder.appendChild(el("span","calc-line","<b>Soglia massima Prestigio raggiunta</b>: il bonus mensile automatico viene limitato al valore massimo 71. Eventuali aumenti per meriti ONGame vanno inseriti manualmente come variazione extra."));}holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" Punti Post</b>":"")));var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var debt=recordDebtSettlement(record,d.key);if(debt){holder.appendChild(el("span","calc-line",registryDisplayLabel(d.key,d.label)+": <b>"+changeFormula(record,d.key)+"</b> · <b>Debito estinto!</b>"));continue;}var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",registryDisplayLabel(d.key,d.label)+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
-  function applyErrorMessage(code){if(code==="sheet-not-read")return "Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».";if(code==="sheet-not-generated")return "Prima completa il calcolo e genera il codice Scheda aggiornato per questo mese.";if(code==="stale-values")return "I valori usati per questo calcolo non coincidono più con la base prevista. Rileggi la Scheda Valori e riprova.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Se devi ricostruire lo storico, gestisci prima gli accrediti successivi e poi rileggi la Scheda Valori corretta.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
+  function applyErrorMessage(code){if(code==="rename-target-exists")return "Il nuovo nome è già utilizzato o possiede già dati collegati: scegli un altro nome oppure controlla prima il database.";if(code==="invalid-name")return "Nome non valido. Inserisci un nome non vuoto, senza / e non più lungo di 160 caratteri.";if(code==="same-name")return "Il nuovo nome coincide con quello attuale.";if(code==="rename-rules-required")return "La rinomina è stata annullata senza perdere dati: le Rules Firebase devono prima consentire al Narratore di migrare i riferimenti Medimagia/Staff Token. Pubblica le Rules aggiornate, ricarica il pannello e riprova.";if(code==="rename-cleanup-partial")return "Il nuovo nome è stato creato e i collegamenti sono stati migrati, ma la pulizia finale del vecchio nome non si è completata. Non rinominare di nuovo: ricarica e controlla entrambi i nomi.";if(code==="sheet-not-read")return "Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».";if(code==="sheet-not-generated")return "Prima completa il calcolo e genera il codice Scheda aggiornato per questo mese.";if(code==="stale-values")return "I valori usati per questo calcolo non coincidono più con la base prevista. Rileggi la Scheda Valori e riprova.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Se devi ricostruire lo storico, gestisci prima gli accrediti successivi e poi rileggi la Scheda Valori corretta.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
   function appendSheetCodeReader(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",st=localSheetState(pgEntry.id),wrap=el("div","sheet-code-reader");
     wrap.appendChild(el("h4",null,"📄 Scheda Valori — incolla e calcola"));
