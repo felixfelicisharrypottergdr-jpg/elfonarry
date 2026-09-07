@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- v83 — macro-audit: rinomina PG allineata a Staff Token v56/v71 e associazione diretta, 07/09/2026 -->
 <!-- v82 - rinomina reale del PG con migrazione coordinata dei dati collegati, 05/09/2026 -->
 <html lang="it">
 <head>
@@ -649,6 +650,17 @@
   }
   function renameErrorCode(e){return e&&e.code?String(e.code):(e&&e.message?String(e.message):"error");}
 
+  function renameStaffNormName(v){return String(v||"").trim().toLowerCase().replace(/\s+/g," ");}
+  function renameStaffAssocKeys(arr){
+    var seen={},out=[];
+    (Array.isArray(arr)?arr:[]).forEach(function(pg){
+      var n=renameStaffNormName(pg&&pg.nome);if(!n)return;
+      var kind=pg&&pg.tipo==="adulti"?"adulti":"studenti",key=kind+"|"+n;
+      if(!seen[key]){seen[key]=true;out.push(key);}
+    });
+    return out.sort();
+  }
+  function renameStaffAssocId(name,kind){return (kind==="adulti"?"adulti":"studenti")+"|"+String(name||"").trim();}
   window.fbRenamePg = async function(personCollection,oldRaw,newRaw,expectedRevision){
     if(!fbAuth.currentUser||fbAuth.currentUser.uid!==NARRATOR_UID)return {ok:false,code:"unauthorized"};
     var oldName=renameCleanPgName(oldRaw),newName=renameCleanPgName(newRaw);
@@ -657,7 +669,7 @@
     if(oldName===newName)return {ok:false,code:"same-name"};
     var tipo=renameTipoForPersonCollection(personCollection),pgKind=renamePgKind(personCollection),accCollection=renameAccreditiCollection(personCollection),passCollection=renamePasswordCollection(personCollection),otherPc=renameOtherPersonCollection(personCollection);
     var oldPgRef=doc(fbDb,personCollection,oldName),newPgRef=doc(fbDb,personCollection,newName),otherPgRef=doc(fbDb,otherPc,newName),oldAccRef=doc(fbDb,accCollection,oldName),newAccRef=doc(fbDb,accCollection,newName),oldPassRef=doc(fbDb,passCollection,oldName),newPassRef=doc(fbDb,passCollection,newName),oldTaccRef=doc(fbDb,"taccuini_personali",oldName),newTaccRef=doc(fbDb,"taccuini_personali",newName);
-    var originalArchived=false,locked=false,newParentCreated=false,cutover=false,linkedOriginals=[];
+    var originalArchived=false,locked=false,newParentCreated=false,cutover=false,linkedOriginals=[],linkedCreatedRefs=[];
     var oldAuditSnap=null,oldSnapshotSnap=null;
     try{
       var pre=await Promise.all([getDoc(oldPgRef),getDoc(newPgRef),getDoc(otherPgRef),getDoc(newAccRef),getDoc(newPassRef),getDoc(newTaccRef),getDocs(collection(fbDb,personCollection,newName,"audit")),getDocs(collection(fbDb,personCollection,newName,"snapshots"))]);
@@ -715,13 +727,76 @@
       if(heal)heal.forEach(function(d){var x=d.data()||{},payload=x.payload&&typeof x.payload==="object"?x.payload:{},changed=x.targetName===oldName||payload.targetName===oldName;if(changed){var nextPayload=Object.assign({},payload);if(nextPayload.targetName===oldName)nextPayload.targetName=newName;linkedOriginals.push({ref:d.ref,data:x});healSets.push({ref:d.ref,data:{targetName:newName,payload:nextPayload}});}});
       if(healSets.length){try{await renameCommitSets(healSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
 
-      // Staff Token: associazioni e usi restano legati allo stesso PG anche dopo il cambio nome.
+      // Staff Token: associazione, usi e log restano coerenti anche dopo il cambio nome.
+      var oldAssocRef=doc(fbDb,"staff_token_assoc",renameStaffAssocId(oldName,pgKind));
+      var newAssocRef=doc(fbDb,"staff_token_assoc",renameStaffAssocId(newName,pgKind));
+      var oldAssocSnap=await getDoc(oldAssocRef),newAssocSnap=await getDoc(newAssocRef);
+      if(newAssocSnap.exists())throw new Error("rename-target-exists");
+
+      var assocOwnerId=oldAssocSnap.exists()?String((oldAssocSnap.data()||{}).staffId||""):"";
+      var assocOwnerName=oldAssocSnap.exists()?String((oldAssocSnap.data()||{}).staffName||""):"";
       var staff=await renameSafeCollection("staff_token"),staffSets=[];
-      if(staff)staff.forEach(function(d){var x=d.data()||{},arr=Array.isArray(x.pgAssociati)?x.pgAssociati:[],changed=false,nextArr=arr.map(function(v){if(v&&typeof v==="object"&&v.nome===oldName&&(!v.tipo||v.tipo===pgKind)){changed=true;return Object.assign({},v,{nome:newName});}return v;});if(changed){linkedOriginals.push({ref:d.ref,data:x});staffSets.push({ref:d.ref,data:{pgAssociati:nextArr}});}});
+      if(staff)staff.forEach(function(d){
+        var x=d.data()||{},arr=Array.isArray(x.pgAssociati)?x.pgAssociati:[],changed=false;
+        var nextArr=arr.map(function(v){
+          if(v&&typeof v==="object"&&v.nome===oldName&&(!v.tipo||v.tipo===pgKind)){
+            changed=true;return Object.assign({},v,{nome:newName,tipo:pgKind});
+          }
+          return v;
+        });
+        if(changed){
+          assocOwnerId=assocOwnerId||d.id;
+          assocOwnerName=assocOwnerName||String(x.nomeVisualizzato||d.id);
+          linkedOriginals.push({ref:d.ref,data:x});
+          staffSets.push({ref:d.ref,data:{
+            pgAssociati:nextArr,
+            pgAssociatiKeys:renameStaffAssocKeys(nextArr),
+            pgAssociatiAggiornatoIl:serverTimestamp()
+          }});
+        }
+      });
       if(staffSets.length){try{await renameCommitSets(staffSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
+
+      if(assocOwnerId){
+        if(oldAssocSnap.exists())linkedOriginals.push({ref:oldAssocRef,data:oldAssocSnap.data()});
+        linkedCreatedRefs.push(newAssocRef);
+        await setDoc(newAssocRef,{
+          schemaVersion:1,pgId:newName,pgKind:pgKind,staffId:assocOwnerId,
+          staffName:assocOwnerName||assocOwnerId,active:true,updatedAt:serverTimestamp()
+        });
+        if(oldAssocSnap.exists())await deleteDoc(oldAssocRef);
+      }
+
       var usages=await renameSafeCollection("staff_token_usi"),usageSets=[];
-      if(usages)usages.forEach(function(d){var x=d.data()||{};if(x.pgId===oldName&&x.pgKind===pgKind){linkedOriginals.push({ref:d.ref,data:x});usageSets.push({ref:d.ref,data:{pgId:newName}});}});
+      if(usages)usages.forEach(function(d){
+        var x=d.data()||{};
+        if(x.pgId===oldName&&(!x.pgKind||x.pgKind===pgKind)){
+          linkedOriginals.push({ref:d.ref,data:x});
+          usageSets.push({ref:d.ref,data:{pgId:newName,pgKind:pgKind,updatedAt:serverTimestamp()}});
+        }
+      });
       if(usageSets.length){try{await renameCommitSets(usageSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
+
+      var stLogs=await renameSafeCollection("staff_token_log"),stLogSets=[];
+      if(stLogs)stLogs.forEach(function(d){
+        var x=d.data()||{};
+        if(x.pgId===oldName&&(!x.pgKind||x.pgKind===pgKind)){
+          var patch={pgId:newName,pgKind:pgKind};
+          if(Array.isArray(x.obiettivi)){
+            patch.obiettivi=x.obiettivi.map(function(o){
+              if(!o||typeof o!=="object")return o;
+              var c=Object.assign({},o);
+              ["nome","dettaglio","formula","descrizione"].forEach(function(k){
+                if(typeof c[k]==="string")c[k]=c[k].split(oldName).join(newName);
+              });
+              return c;
+            });
+          }
+          linkedOriginals.push({ref:d.ref,data:x});
+          stLogSets.push({ref:d.ref,data:patch});
+        }
+      });
+      if(stLogSets.length){try{await renameCommitSets(stLogSets,true);}catch(e){if(renameErrorCode(e).indexOf("permission")>=0)throw new Error("rename-rules-required");throw e;}}
 
       // Eventuali richieste del Generatore Accrediti ancora pendenti: aggiorna solo i riferimenti PG dichiarati.
       var pending=await renameSafeCollection("richieste_pending"),pendingSets=[];
@@ -744,7 +819,8 @@
       console.error("Rinomina PG non completata:",e);
       var code=renameErrorCode(e);
       if(!cutover){
-        // Ripristino best-effort: prima i riferimenti esterni, poi eventuale copia nuova, infine il vecchio PG.
+        // Ripristino best-effort: elimina prima i riferimenti creati ex novo, poi ripristina gli originali.
+        try{for(var rc=linkedCreatedRefs.length-1;rc>=0;rc--)await deleteDoc(linkedCreatedRefs[rc]);}catch(re){console.error("Rollback riferimenti nuovi rinomina:",re);}
         try{for(var ri=linkedOriginals.length-1;ri>=0;ri--)await setDoc(linkedOriginals[ri].ref,linkedOriginals[ri].data);}catch(re){console.error("Rollback riferimenti rinomina:",re);}
         if(newParentCreated){
           try{var na=await getDocs(collection(fbDb,personCollection,newName,"audit")),ns=await getDocs(collection(fbDb,personCollection,newName,"snapshots")),rr=[];na.forEach(function(d){rr.push(d.ref);});ns.forEach(function(d){rr.push(d.ref);});if(rr.length)await renameCommitDeletes(rr);}catch(re){console.error(re);}
