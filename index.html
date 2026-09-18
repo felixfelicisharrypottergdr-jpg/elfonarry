@@ -549,33 +549,53 @@
   }
   window.fbSetPostProgressionExclusion = async function(collectionName, pgId, monthId, postRef, excluded, reason){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return {ok:false,code:"unauthorized"}; }
-    var accCollection=collectionName==="personaggi_adulti"?"accrediti_adulti":"accrediti_studenti";
-    var pgRef=doc(fbDb,collectionName,pgId),accRef=doc(fbDb,accCollection,pgId),auditRef=doc(collection(fbDb,collectionName,pgId,"audit")),snapRef=doc(collection(fbDb,collectionName,pgId,"snapshots"));
     try{
-      await runTransaction(fbDb,async function(tx){
-        var pgSnap=await tx.get(pgRef);if(!pgSnap.exists())throw new Error("missing-pg");
-        var cur=pgSnap.data()||{};if(cur._deleted)throw new Error("deleted-pg");
-        var accSnap=await tx.get(accRef),accData=accSnap.exists()?accSnap.data():{};
-        var mesi=deepClone(cur.MESI||[]),found=null;
-        for(var mi=0;mi<mesi.length&&!found;mi++){
-          var mese=mesi[mi]||{};if(String(mese.id)!==String(monthId))continue;
-          var posts=Array.isArray(mese.posts)?mese.posts:[];
-          for(var pi=0;pi<posts.length;pi++){var post=posts[pi];if(narratorPostMatchesRef(post,postRef)){found={mese:mese,post:post};break;}}
+      var pgRef=doc(fbDb,collectionName,pgId), snap=await getDoc(pgRef);
+      if(!snap.exists())throw new Error("missing-pg");
+      var cur=snap.data()||{};
+      if(cur._deleted)throw new Error("deleted-pg");
+      var accCollection=collectionName==="personaggi_adulti"?"accrediti_adulti":"accrediti_studenti";
+      var accSnap=await getDoc(doc(fbDb,accCollection,pgId)),accData=accSnap.exists()?accSnap.data():{};
+      var mesi=deepClone(cur.MESI||[]),found=null;
+      for(var mi=0;mi<mesi.length&&!found;mi++){
+        var mese=mesi[mi]||{};
+        if(String(mese.id)!==String(monthId))continue;
+        var posts=Array.isArray(mese.posts)?mese.posts:[];
+        for(var pi=0;pi<posts.length;pi++){
+          var post=posts[pi];
+          if(narratorPostMatchesRef(post,postRef)){found={mese:mese,post:post};break;}
         }
-        if(!found)throw new Error("missing-post");
-        if(!isValidPostLink(found.post.link))throw new Error("invalid-post-link");
-        if(narratorMonthIsAccredited(accData,found.mese))throw new Error("post-exclusion-accredited");
-        var nextExcluded=!!excluded,before=!!found.post.excludedFromProgression,beforeReason=String(found.post.exclusionReason||""),nextReason=nextExcluded?String(reason||"").trim():"";
-        if(before===nextExcluded&&beforeReason===nextReason)return;
-        found.post.excludedFromProgression=nextExcluded;found.post.exclusionReason=nextReason;
-        var remoteRevision=Math.max(0,parseInt(cur._dbRevision,10)||0),action=nextExcluded?"Post escluso dai conteggi dal Narratore":"Post ripristinato nei conteggi dal Narratore";
-        var patch={MESI:mesi,_dbRevision:remoteRevision+1,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastSessionId:"",_lastAction:action};
-        tx.set(snapRef,snapshotEvent(pgId,cur,"Backup automatico prima della gestione esclusione Post",true));
-        tx.set(pgRef,patch,{merge:true});
-        tx.set(auditRef,narratorEvent(pgId,"Camera Blindata",action,[{path:"MESI[post="+String(postRef&&postRef.id!=null?postRef.id:(postRef&&postRef.globalNo!=null?"global:"+postRef.globalNo:"link"))+"] .excludedFromProgression".replace(/\s+/g,""),before:before,after:nextExcluded},{path:"MESI[post="+String(postRef&&postRef.id!=null?postRef.id:(postRef&&postRef.globalNo!=null?"global:"+postRef.globalNo:"link"))+"] .exclusionReason".replace(/\s+/g,""),before:beforeReason,after:nextReason}]));
-      });
+      }
+      if(!found)throw new Error("missing-post");
+      if(!isValidPostLink(found.post.link))throw new Error("invalid-post-link");
+      if(narratorMonthIsAccredited(accData,found.mese))throw new Error("post-exclusion-accredited");
+
+      var nextExcluded=!!excluded;
+      var before=!!found.post.excludedFromProgression;
+      var beforeReason=String(found.post.exclusionReason||"");
+      var nextReason=nextExcluded?String(reason||"").trim():"";
+      if(before===nextExcluded && beforeReason===nextReason){return {ok:true};}
+
+      found.post.excludedFromProgression=nextExcluded;
+      found.post.exclusionReason=nextReason;
+      var remoteRevision=Math.max(0,parseInt(cur._dbRevision,10)||0);
+      var action=nextExcluded?"Post escluso dai conteggi dal Narratore":"Post ripristinato nei conteggi dal Narratore";
+      var refLabel=String(postRef&&postRef.id!=null?postRef.id:(postRef&&postRef.globalNo!=null?"global:"+postRef.globalNo:"link"));
+      var changes=[
+        {path:"MESI[post="+refLabel+"].excludedFromProgression",before:before,after:nextExcluded},
+        {path:"MESI[post="+refLabel+"].exclusionReason",before:beforeReason,after:nextReason}
+      ];
+
+      /* Usa la stessa transazione già collaudata delle correzioni Narratore.
+         In questo modo esclusione/ripristino sfruttano identiche Rules, snapshot,
+         revisione e audit di «Salva correzioni», invece di avere un percorso Firebase parallelo. */
+      var res=await window.fbPatchPgFields(collectionName,pgId,remoteRevision,{MESI:mesi},action,changes);
+      if(!res || !res.ok){ return res||{ok:false,code:"error"}; }
       return {ok:true};
-    }catch(e){console.error("Gestione esclusione Post fallita:",e);return {ok:false,code:e&&e.message?e.message:"error"};}
+    }catch(e){
+      console.error("Gestione esclusione Post fallita:",e);
+      return {ok:false,code:e&&e.message?e.message:"error"};
+    }
   };
 
   window.fbSetArchived = function(collectionName, pgId, valore){
@@ -1855,11 +1875,13 @@
            exclusionBox.appendChild(el("div",null,"⚠ <b>Post escluso dai conteggi</b>"));
            exclusionBox.appendChild(el("div",null,"Motivo: "+(String(post.exclusionReason||"").trim()||"non specificato")));
            var restore=el("button","action small","Ripristina nei conteggi");restore.type="button";restore.disabled=locked;
+           var restoreStatus=el("div","small-note","");restoreStatus.style.marginTop="8px";
            restore.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Ripristina il Post nei conteggi";
            if(locked){exclusionBox.appendChild(el("div","small-note","🔒 Mese già accreditato: revoca prima l’accredito per poter ripristinare questo Post."));}
            restore.addEventListener(EV,function(){
              if(locked){alert("Questo Mese è già stato accreditato. Revoca prima l’accredito, poi potrai ripristinare il Post nei conteggi.");return;}
              restore.disabled=true;
+             restoreStatus.textContent="Salvataggio ripristino…";
              window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,"")
                .then(function(res){
                  if(res&&res.ok){
@@ -1869,23 +1891,28 @@
                    renderPosts();
                  }else{
                    restore.disabled=false;
+                   restoreStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
                    var msg=applyErrorMessage(res&&res.code);
                    alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
                  }
                })
                .catch(function(e){
                  restore.disabled=false;
+                 restoreStatus.textContent="⚠ Ripristino non riuscito.";
                  console.error(e);
                  alert("Ripristino non riuscito. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
                });
            });
            exclusionBox.appendChild(restore);
+           exclusionBox.appendChild(restoreStatus);
          }else if(isValidPostLink(post.link)){
            var controls=el("div","post-exclusion-controls"),reasonWrap=el("div"),customWrap=el("div");
            reasonWrap.appendChild(el("label",null,"Motivo dell’esclusione"));var reason=el("select");
            [{v:"sotto limite caratteri",t:"Sotto limite caratteri"},{v:"role non valida",t:"Role non valida"},{v:"altro",t:"Altro"}].forEach(function(opt){var o=el("option",null,opt.t);o.value=opt.v;reason.appendChild(o);});
            customWrap.appendChild(el("label",null,"Dettaglio (solo per Altro)"));var custom=el("input");custom.type="text";custom.placeholder="Specifica il motivo";customWrap.appendChild(custom);customWrap.style.display="none";reason.addEventListener("change",function(){customWrap.style.display=reason.value==="altro"?"block":"none";});
            var excludeBtn=el("button","action small danger","Escludi dai conteggi");excludeBtn.type="button";excludeBtn.disabled=false;
+           var exclusionStatus=el("div","small-note","");
+           exclusionStatus.style.marginTop="8px";
            excludeBtn.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Esclude questo Post da tutti i conteggi progressivi";
            if(locked){exclusionBox.appendChild(el("div","small-note","🔒 Mese già accreditato: l’esclusione resta bloccata finché non revochi l’accredito."));}
            excludeBtn.addEventListener(EV,function(){
@@ -1893,6 +1920,7 @@
              var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");
              if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}
              excludeBtn.disabled=true;
+             exclusionStatus.textContent="Salvataggio esclusione…";
              window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason)
                .then(function(res){
                  if(res&&res.ok){
@@ -1902,17 +1930,20 @@
                    renderPosts();
                  }else{
                    excludeBtn.disabled=false;
+                   exclusionStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
                    var msg=applyErrorMessage(res&&res.code);
                    alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
                  }
                })
                .catch(function(e){
                  excludeBtn.disabled=false;
+                 exclusionStatus.textContent="⚠ Esclusione non riuscita.";
                  console.error(e);
                  alert("Esclusione non riuscita. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
                });
            });
            controls.appendChild(reasonWrap);controls.appendChild(customWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
+           exclusionBox.appendChild(exclusionStatus);
            exclusionBox.appendChild(el("div","post-exclusion-help","Il Post resta nello storico, ma non entra nei conteggi finché non viene ripristinato."));
          }else{exclusionBox.appendChild(el("div",null,"Aggiungi prima il link del Post per poterlo escludere."));}
          var rm=el("button","action danger small","Rimuovi dall’editor");rm.type="button";rm.disabled=locked;rm.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Rimuove il Post solo dall’editor locale; la modifica diventa permanente soltanto con «Salva correzioni».";rm.addEventListener(EV,function(){if(locked)return;if(!confirm("Rimuovere questo Post dall’editor?\n\nIl Post non verrà cancellato da Firebase finché non premi «Salva correzioni»."))return;posts.splice(pos,1);renderPosts();});row.appendChild(a);row.appendChild(b);row.appendChild(exclusionBox);row.appendChild(rm);plist.appendChild(row);})(posts[p],p);}renderPosts();area.appendChild(plist);var addPost=el("button","action small","+ Aggiungi Post");addPost.type="button";addPost.disabled=locked;addPost.addEventListener(EV,function(){posts.push({id:Date.now(),link:"",nota:""});renderPosts();});area.appendChild(addPost);
