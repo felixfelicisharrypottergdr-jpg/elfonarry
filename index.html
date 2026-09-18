@@ -550,112 +550,77 @@
   /*
    * Esclusione/ripristino di un singolo Post.
    *
-   * Questa operazione NON passa più da fbPatchPgFields/runTransaction: il
-   * Narratore ha già un permesso diretto di update sul documento PG e qui
-   * vogliamo evitare che una transazione più ampia (snapshot + audit + PG)
-   * possa rimanere in attesa senza dare un risultato all'interfaccia.
-   *
-   * Il documento PG e l'evento audit vengono comunque scritti in un unico
-   * writeBatch atomico. Lo snapshot viene scritto subito dopo come backup
-   * protetto; se il backup non riesce, l'esclusione funzionale resta comunque
-   * salvata e viene segnalata in console.
+   * Percorso volutamente semplice e coerente con le altre correzioni del
+   * Narratore: leggiamo la versione corrente del PG, modifichiamo solamente
+   * il Post interessato e demandiamo a fbPatchPgFields il salvataggio con
+   * revisione + snapshot + audit. In questo modo non esistono due percorsi
+   * diversi di scrittura per la stessa Camera Blindata.
    */
   window.fbSetPostProgressionExclusion = async function(collectionName, pgId, monthId, postRef, excluded, reason){
     if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){
       return {ok:false,code:"unauthorized"};
     }
     try{
-      var pgRef=doc(fbDb,collectionName,pgId);
-      var snap=await getDoc(pgRef);
-      if(!snap.exists())throw new Error("missing-pg");
+      var current=await window.fbGetPg(collectionName,pgId);
+      if(!current)throw new Error("missing-pg");
+      if(current._deleted)throw new Error("deleted-pg");
 
-      var cur=snap.data()||{};
-      if(cur._deleted)throw new Error("deleted-pg");
-
-      var accCollection=collectionName==="personaggi_adulti"?"accrediti_adulti":"accrediti_studenti";
-      var accSnap=await getDoc(doc(fbDb,accCollection,pgId));
-      var accData=accSnap.exists()?accSnap.data():{};
-
-      var mesi=deepClone(Array.isArray(cur.MESI)?cur.MESI:[]),found=null;
+      /* Questo blocco vive nello <script type="module">: non può vedere
+         deepClone()/isValidPostLink() dichiarate nello script classico. */
+      var mesi=JSON.parse(JSON.stringify(Array.isArray(current.MESI)?current.MESI:[])),found=null;
       for(var mi=0;mi<mesi.length&&!found;mi++){
         var mese=mesi[mi]||{};
         if(String(mese.id)!==String(monthId))continue;
         var posts=Array.isArray(mese.posts)?mese.posts:[];
         for(var pi=0;pi<posts.length;pi++){
           if(narratorPostMatchesRef(posts[pi],postRef)){
-            found={mese:mese,post:posts[pi],postIndex:pi,meseIndex:mi};
+            found={mese:mese,post:posts[pi]};
             break;
           }
         }
       }
       if(!found)throw new Error("missing-post");
-      if(!isValidPostLink(found.post.link))throw new Error("invalid-post-link");
+      var postLink=String(found.post.link||"").trim();
+      if(/^\/?\?t=/i.test(postLink)){postLink="https://felixfelicisharrypottergdr.forumfree.it/"+postLink.replace(/^\//,"");}
+      if(!/^https?:\/\//i.test(postLink))throw new Error("invalid-post-link");
+      try{var postUrl=new URL(postLink);if(postUrl.protocol!=="http:"&&postUrl.protocol!=="https:")throw new Error("invalid-post-link");}catch(e){throw new Error("invalid-post-link");}
+
+      var accCollection=collectionName==="personaggi_adulti"?"accrediti_adulti":"accrediti_studenti";
+      var accData=await window.fbGetAccrediti(accCollection,pgId);
       if(narratorMonthIsAccredited(accData,found.mese))throw new Error("post-exclusion-accredited");
 
       var nextExcluded=!!excluded;
       var before=!!found.post.excludedFromProgression;
       var beforeReason=String(found.post.exclusionReason||"");
       var nextReason=nextExcluded?String(reason||"").trim():"";
-
       if(before===nextExcluded && beforeReason===nextReason){
-        return {
-          ok:true,
-          already:true,
-          revision:Math.max(0,parseInt(cur._dbRevision,10)||0),
-          mesi:mesi
-        };
+        return {ok:true,unchanged:true,revision:Math.max(0,parseInt(current._dbRevision,10)||0),mesi:mesi,excluded:nextExcluded,reason:nextReason};
       }
 
       found.post.excludedFromProgression=nextExcluded;
       found.post.exclusionReason=nextReason;
 
-      var remoteRevision=Math.max(0,parseInt(cur._dbRevision,10)||0);
-      var nextRevision=remoteRevision+1;
-      var action=nextExcluded?
-        "Post escluso dai conteggi dal Narratore":
-        "Post ripristinato nei conteggi dal Narratore";
-      var refLabel=String(
-        postRef&&postRef.id!=null?postRef.id:
-        (postRef&&postRef.globalNo!=null?"global:"+postRef.globalNo:"link")
-      );
+      var action=nextExcluded?"Post escluso dai conteggi dal Narratore":"Post ripristinato nei conteggi dal Narratore";
+      var refLabel=postRef&&postRef.id!=null?String(postRef.id):(postRef&&postRef.globalNo!=null?"global:"+postRef.globalNo:"link");
       var changes=[
         {path:"MESI[post="+refLabel+"].excludedFromProgression",before:before,after:nextExcluded},
         {path:"MESI[post="+refLabel+"].exclusionReason",before:beforeReason,after:nextReason}
       ];
 
-      var patch={
-        MESI:mesi,
-        _dbRevision:nextRevision,
-        _lastModifiedAt:serverTimestamp(),
-        _lastModifiedBy:"narratore",
-        _lastSessionId:"",
-        _lastAction:action
-      };
-
-      var auditRef=doc(collection(fbDb,collectionName,pgId,"audit"));
-      var batch=writeBatch(fbDb);
-      batch.set(pgRef,patch,{merge:true});
-      batch.set(auditRef,narratorEvent(pgId,"Camera Blindata",action,changes));
-
-      /*
-       * Qui il salvataggio funzionale è volutamente separato dalle parti
-       * accessorie: se qualcosa relativo allo snapshot fosse problematico,
-       * l'esclusione non deve restare bloccata.
-       */
-      await batch.commit();
-
-      try{
-        var snapRef=doc(collection(fbDb,collectionName,pgId,"snapshots"));
-        var snapshotPayload=snapshotEvent(pgId,cur,"Backup automatico prima dell'esclusione/ripristino Post",true);
-        await setDoc(snapRef,snapshotPayload);
-      }catch(snapshotErr){
-        console.warn("Esclusione/ripristino salvato, ma backup snapshot non creato:",snapshotErr);
-      }
+      var res=await window.fbPatchPgFields(
+        collectionName,
+        pgId,
+        Math.max(0,parseInt(current._dbRevision,10)||0),
+        {MESI:mesi},
+        action,
+        changes
+      );
+      if(!res || !res.ok){return {ok:false,code:res&&res.code?res.code:"error"};}
 
       return {
         ok:true,
-        already:false,
-        revision:nextRevision,
+        unchanged:false,
+        revision:Math.max(0,parseInt(current._dbRevision,10)||0)+1,
         mesi:mesi,
         excluded:nextExcluded,
         reason:nextReason
@@ -1946,35 +1911,33 @@
            var restoreStatus=el("div","small-note","");restoreStatus.style.marginTop="8px";
            restore.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Ripristina il Post nei conteggi";
            if(locked){exclusionBox.appendChild(el("div","small-note","🔒 Mese già accreditato: revoca prima l’accredito per poter ripristinare questo Post."));}
-           restore.addEventListener(EV,function(){
+           restore.addEventListener(EV,async function(){
              if(locked){alert("Questo Mese è già stato accreditato. Revoca prima l’accredito, poi potrai ripristinare il Post nei conteggi.");return;}
              restore.disabled=true;
-             restoreStatus.textContent="Salvataggio ripristino…";
-             Promise.race([
-               window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,""),
-               new Promise(function(resolve){setTimeout(function(){resolve({ok:false,code:"exclusion-timeout"});},15000);})
-             ])
-               .then(function(res){
-                 if(res&&res.ok){
-                   post.excludedFromProgression=false;
-                   post.exclusionReason="";
-                   if(res.revision!=null){pgEntry.data._dbRevision=res.revision;}
-                   pgEntry.data.MESI=deepClone(working);
-                   clearAccreditiCache(accreditiCollection,pgEntry.id);
-                   renderPosts();
-                 }else{
-                   restore.disabled=false;
-                   restoreStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
-                   var msg=applyErrorMessage(res&&res.code);
-                   alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
-                 }
-               })
-               .catch(function(e){
+             restoreStatus.textContent="Lettura del PG…";
+             var timer=setTimeout(function(){
+               if(restore.disabled){restore.disabled=false;restoreStatus.textContent="⚠ Il salvataggio non ha risposto entro 20 secondi. Ricarica il PG e controlla il Post.";}
+             },20000);
+             try{
+               restoreStatus.textContent="Salvataggio ripristino…";
+               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,"");
+               clearTimeout(timer);
+               if(res&&res.ok){
+                 post.excludedFromProgression=false;
+                 post.exclusionReason="";
+                 if(res.revision!=null){pgEntry.data._dbRevision=res.revision;}
+                 pgEntry.data.MESI=deepClone(working);
+                 clearAccreditiCache(accreditiCollection,pgEntry.id);
+                 renderPosts();
+               }else{
                  restore.disabled=false;
-                 restoreStatus.textContent="⚠ Ripristino non riuscito.";
-                 console.error(e);
-                 alert("Ripristino non riuscito. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
-               });
+                 restoreStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
+                 alert(applyErrorMessage(res&&res.code)+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
+               }
+             }catch(e){
+               clearTimeout(timer);restore.disabled=false;restoreStatus.textContent="⚠ Ripristino non riuscito.";console.error(e);
+               alert("Ripristino non riuscito.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
+             }
            });
            exclusionBox.appendChild(restore);
            exclusionBox.appendChild(restoreStatus);
@@ -1988,37 +1951,34 @@
            exclusionStatus.style.marginTop="8px";
            excludeBtn.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Esclude questo Post da tutti i conteggi progressivi";
            if(locked){exclusionBox.appendChild(el("div","small-note","🔒 Mese già accreditato: l’esclusione resta bloccata finché non revochi l’accredito."));}
-           excludeBtn.addEventListener(EV,function(){
+           excludeBtn.addEventListener(EV,async function(){
              if(locked){alert("Questo Mese è già stato accreditato. Revoca prima l’accredito, poi potrai escludere il Post dai conteggi.");return;}
              var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");
              if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}
              excludeBtn.disabled=true;
-             exclusionStatus.textContent="Salvataggio esclusione…";
-             Promise.race([
-               window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason),
-               new Promise(function(resolve){setTimeout(function(){resolve({ok:false,code:"exclusion-timeout"});},15000);})
-             ])
-               .then(function(res){
-                 if(res&&res.ok){
-                   post.excludedFromProgression=true;
-                   post.exclusionReason=finalReason;
-                   if(res.revision!=null){pgEntry.data._dbRevision=res.revision;}
-                   pgEntry.data.MESI=deepClone(working);
-                   clearAccreditiCache(accreditiCollection,pgEntry.id);
-                   renderPosts();
-                 }else{
-                   excludeBtn.disabled=false;
-                   exclusionStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
-                   var msg=applyErrorMessage(res&&res.code);
-                   alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
-                 }
-               })
-               .catch(function(e){
+             var timer=setTimeout(function(){
+               if(excludeBtn.disabled){excludeBtn.disabled=false;exclusionStatus.textContent="⚠ Il salvataggio non ha risposto entro 20 secondi. Ricarica il PG e controlla il Post.";}
+             },20000);
+             try{
+               exclusionStatus.textContent="Lettura del PG…";
+               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason);
+               clearTimeout(timer);
+               if(res&&res.ok){
+                 post.excludedFromProgression=true;
+                 post.exclusionReason=finalReason;
+                 if(res.revision!=null){pgEntry.data._dbRevision=res.revision;}
+                 pgEntry.data.MESI=deepClone(working);
+                 clearAccreditiCache(accreditiCollection,pgEntry.id);
+                 renderPosts();
+               }else{
                  excludeBtn.disabled=false;
-                 exclusionStatus.textContent="⚠ Esclusione non riuscita.";
-                 console.error(e);
-                 alert("Esclusione non riuscita. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
-               });
+                 exclusionStatus.textContent="⚠ "+applyErrorMessage(res&&res.code);
+                 alert(applyErrorMessage(res&&res.code)+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));
+               }
+             }catch(e){
+               clearTimeout(timer);excludeBtn.disabled=false;exclusionStatus.textContent="⚠ Esclusione non riuscita.";console.error(e);
+               alert("Esclusione non riuscita.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
+             }
            });
            controls.appendChild(reasonWrap);controls.appendChild(customWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
            exclusionBox.appendChild(exclusionStatus);
