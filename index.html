@@ -1,3 +1,4 @@
+<!-- v84 — esclusione Narratore dei Post dalla progressione; 18/09/2026 -->
 <!DOCTYPE html>
 <!-- v83 — macro-audit: rinomina PG allineata a Staff Token v56/v71 e associazione diretta, 07/09/2026 -->
 <!-- v82 - rinomina reale del PG con migrazione coordinata dei dati collegati, 05/09/2026 -->
@@ -285,6 +286,12 @@
   .editor-post{display:grid;grid-template-columns:minmax(180px,1.8fr) minmax(150px,1fr) auto;gap:7px;align-items:end;padding:8px 0;border-top:1px dashed #c8b98b}
   .editor-post:first-child{border-top:0}
   .editor-post .action{margin:0}
+  .post-exclusion-box{margin:8px 0 0;padding:8px 10px;border:1px solid #a23a34;border-radius:7px;background:#f8dfda;color:#6f211e;font-size:.76rem;line-height:1.4;}
+  .post-exclusion-ok{margin:8px 0 0;padding:7px 9px;border:1px solid #7d9d75;border-radius:7px;background:#eef6ea;color:#355b3a;font-size:.76rem;line-height:1.4;}
+  .post-exclusion-controls{display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.5fr) auto;gap:7px;align-items:end;margin-top:7px;}
+  .post-exclusion-controls .action{margin:0;}
+  @media(max-width:700px){.post-exclusion-controls{grid-template-columns:1fr}.post-exclusion-controls .action{width:100%;}}
+
   .editor-bonus{border:1px solid #d2c49a;border-radius:7px;padding:9px;margin:8px 0;background:#fffdf5}
   .editor-bonus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px;font-size:.8rem;font-weight:800}
   .advanced-editor textarea{width:100%;min-height:240px;resize:vertical;border:1px solid var(--gold);border-radius:5px;background:#fffdf5;padding:9px;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
@@ -505,6 +512,24 @@
         {path:"RICHIESTA_ELIMINAZIONE",before:true,after:false}
       ]));
     }).then(function(){return true;}).catch(function(e){console.error(e);return false;});
+  };
+
+  window.fbSetPostProgressionExclusion = async function(collectionName, pgId, monthId, postId, excluded, reason, expectedRevision){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){ return {ok:false,code:"unauthorized"}; }
+    try{
+      var current=await window.fbGetPg(collectionName,pgId);
+      if(!current || current._deleted)throw new Error("missing-pg");
+      var mesi=deepClone(current.MESI||[]),found=null;
+      for(var mi=0;mi<mesi.length&&!found;mi++){var mese=mesi[mi]||{};if(String(mese.id)!==String(monthId))continue;var posts=Array.isArray(mese.posts)?mese.posts:[];for(var pi=0;pi<posts.length;pi++){var post=posts[pi];if(post&&String(post.id)===String(postId)){found={mese:mese,post:post};break;}}}
+      if(!found)throw new Error("missing-post");
+      if(!isValidPostLink(found.post.link))throw new Error("invalid-post-link");
+      var before=!!found.post.excludedFromProgression,beforeReason=String(found.post.exclusionReason||"");
+      found.post.excludedFromProgression=!!excluded;found.post.exclusionReason=excluded?String(reason||"").trim():"";
+      if(before===!!excluded&&beforeReason===found.post.exclusionReason)return {ok:true,unchanged:true};
+      var action=excluded?"Post escluso dai conteggi dal Narratore":"Post ripristinato nei conteggi dal Narratore";
+      var res=await window.fbPatchPgFields(collectionName,pgId,expectedRevision,{MESI:mesi},action,[{path:"MESI[post="+String(postId)+"].excludedFromProgression",before:before,after:!!excluded},{path:"MESI[post="+String(postId)+"].exclusionReason",before:beforeReason,after:found.post.exclusionReason}]);
+      return res&&res.ok?{ok:true}:{ok:false,code:res&&res.code?res.code:"error"};
+    }catch(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};}
   };
 
   window.fbSetArchived = function(collectionName, pgId, valore){
@@ -1080,6 +1105,8 @@
     try{ var u=new URL(raw); return (u.protocol==="http:" || u.protocol==="https:") ? u.href : ""; }catch(e){ return ""; }
   }
   function isValidPostLink(value){return safeHttpUrl(value)!=="";}
+  function isPostExcluded(post){return !!(post&&post.excludedFromProgression===true);}
+  function getValidPosts(posts){posts=Array.isArray(posts)?posts:[];return posts.filter(function(post){return !!(post&&isValidPostLink(post.link)&&!isPostExcluded(post));});}
   function makeLinkIcon(url, title){
     var normalized=safeHttpUrl(url); if(!normalized){ return null; }
     var a=el("a","link-open-icon","&#8599;"); a.href=normalized; a.target="_blank"; a.rel="noopener noreferrer"; a.title=title||"Apri link"; a.setAttribute("aria-label",title||"Apri link"); return a;
@@ -1143,13 +1170,13 @@
     return !!(r&&r.used&&isValidPostLink(post&&post.link));
   }
   function narratorPostEligible(post,b,posts){
-    if(!post||!isValidPostLink(post.link))return false;
+    if(!post||!isValidPostLink(post.link)||isPostExcluded(post))return false;
     if(b.modalita==="all")return true;
     if(b.modalita==="posts")return narratorPostUses(post,b);
     if(b.modalita==="first"){
       var max=Math.max(0,parseInt(b.primiPost,10)||0);if(max<=0)return false;
       posts=Array.isArray(posts)?posts:[];var seen=0;
-      for(var i=0;i<posts.length;i++){if(!posts[i]||!isValidPostLink(posts[i].link))continue;seen++;if(posts[i]===post)return seen<=max;}
+      for(var i=0;i<posts.length;i++){if(!posts[i]||!isValidPostLink(posts[i].link)||isPostExcluded(posts[i]))continue;seen++;if(posts[i]===post)return seen<=max;}
     }
     return false;
   }
@@ -1185,7 +1212,7 @@
     return String(b.altro||"").trim();
   }
   function totaleG(tipo,posts,mese){
-    var count=0;for(var i=0;i<posts.length;i++)if(posts[i]&&isValidPostLink(posts[i].link))count++;
+    var count=getValidPosts(posts).length;
     var tot=0;for(var p=1;p<=count;p++)tot+=valoreG(tipo,p);
     var bonuses=narratorAllBonuses(mese);
     for(var b=0;b<bonuses.length;b++){
@@ -1197,7 +1224,7 @@
   function totalePP(posts,mese){
     var tot=0,bonuses=narratorAllBonuses(mese);
     for(var i=0;i<posts.length;i++){
-      var post=posts[i];if(!post||!isValidPostLink(post.link))continue;
+      var post=posts[i];if(!post||!isValidPostLink(post.link)||isPostExcluded(post))continue;
       /* post.pp appartiene al vecchio sistema Bonus ed è ignorato.
          I PP validi arrivano esclusivamente dai Bonus generici correnti. */
       for(var b=0;b<bonuses.length;b++)tot+=narratorBonusPPOnPost(post,bonuses[b],posts);
@@ -1247,7 +1274,7 @@
     }
     return out;
   }
-  function validPostCount(posts){var c=0;posts=Array.isArray(posts)?posts:[];for(var i=0;i<posts.length;i++){if(posts[i]&&isValidPostLink(posts[i].link))c++;}return c;}
+  function validPostCount(posts){return getValidPosts(posts).length;}
   function normalizeMonthName(nome){
     return String(nome || "").trim().replace(/\s+/g," ").toLocaleLowerCase("it-IT");
   }
@@ -1776,7 +1803,25 @@
       var sel=el("select");for(var i=working.length-1;i>=0;i--){var o=el("option",null,(working[i].nome||"(senza nome)")+" · "+validPostCount(working[i].posts||[])+" Post");o.value=String(i);sel.appendChild(o);}box.appendChild(sel);var area=el("div");box.appendChild(area);
       function renderMonth(){area.innerHTML="";var idx=parseInt(sel.value,10);if(isNaN(idx)||!working[idx])return;var mese=working[idx],entry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),locked=!!(accreditiData[mese.id]||entry);if(locked)area.appendChild(el("div","editor-lock","🔒 Questo Mese è già accreditato. Revoca prima l’accredito per modificarlo."));
         var grid=el("div","editor-grid"),nameCell=el("div");nameCell.appendChild(el("label",null,"Nome del Mese"));var name=el("input");name.type="text";name.value=String(mese.nome||"");name.disabled=locked;name.addEventListener("input",function(){mese.nome=name.value;});nameCell.appendChild(name);grid.appendChild(nameCell);var closedCell=el("div");closedCell.appendChild(el("label",null,"Stato"));var closed=el("select");[[false,"Aperto"],[true,"Chiuso"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0]?"1":"0";if(!!mese.chiuso===x[0])o.selected=true;closed.appendChild(o);});closed.disabled=locked;closed.addEventListener("change",function(){mese.chiuso=closed.value==="1";});closedCell.appendChild(closed);grid.appendChild(closedCell);area.appendChild(grid);
-        area.appendChild(el("h4",null,"Post"));var posts=Array.isArray(mese.posts)?mese.posts:(mese.posts=[]),plist=el("div");function renderPosts(){plist.innerHTML="";for(var p=0;p<posts.length;p++)(function(post,pos){var row=el("div","editor-post"),a=el("div"),b=el("div");a.appendChild(el("label",null,"Link Post "+(pos+1)));var l=el("input");l.type="text";l.value=String(post.link||"");l.disabled=locked;l.addEventListener("input",function(){post.link=l.value;});a.appendChild(l);b.appendChild(el("label",null,"Nota"));var n=el("input");n.type="text";n.value=String(post.nota||"");n.disabled=locked;n.addEventListener("input",function(){post.nota=n.value;});b.appendChild(n);var rm=el("button","action danger small","Rimuovi");rm.type="button";rm.disabled=locked;rm.addEventListener(EV,function(){posts.splice(pos,1);renderPosts();});row.appendChild(a);row.appendChild(b);row.appendChild(rm);plist.appendChild(row);})(posts[p],p);}renderPosts();area.appendChild(plist);var addPost=el("button","action small","+ Aggiungi Post");addPost.type="button";addPost.disabled=locked;addPost.addEventListener(EV,function(){posts.push({id:Date.now(),link:"",nota:""});renderPosts();});area.appendChild(addPost);
+        area.appendChild(el("h4",null,"Post"));var posts=Array.isArray(mese.posts)?mese.posts:(mese.posts=[]),plist=el("div");function renderPosts(){plist.innerHTML="";for(var p=0;p<posts.length;p++)(function(post,pos){var row=el("div","editor-post"),a=el("div"),b=el("div");a.appendChild(el("label",null,"Link Post "+(pos+1)));var l=el("input");l.type="text";l.value=String(post.link||"");l.disabled=locked;l.addEventListener("input",function(){post.link=l.value;});a.appendChild(l);b.appendChild(el("label",null,"Nota"));var n=el("input");n.type="text";n.value=String(post.nota||"");n.disabled=locked;n.addEventListener("input",function(){post.nota=n.value;});b.appendChild(n);
+         var exclusionBox=el("div",isPostExcluded(post)?"post-exclusion-ok":"post-exclusion-box");
+         if(isPostExcluded(post)){
+           exclusionBox.appendChild(el("div",null,"⚠ <b>Post escluso dai conteggi</b>"));
+           exclusionBox.appendChild(el("div",null,"Motivo: "+(String(post.exclusionReason||"").trim()||"non specificato")));
+           var restore=el("button","action small","Ripristina nei conteggi");restore.type="button";
+           restore.addEventListener(EV,function(){var oldRevision=pgEntry.data&&pgEntry.data._dbRevision;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,post.id,false,"",oldRevision).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{alert(applyErrorMessage(res&&res.code));}});});
+           exclusionBox.appendChild(restore);
+         }else if(isValidPostLink(post.link)){
+           var controls=el("div","post-exclusion-controls"),reasonWrap=el("div"),customWrap=el("div");
+           reasonWrap.appendChild(el("label",null,"Motivo dell’esclusione"));var reason=el("select");
+           [{v:"sotto limite caratteri",t:"Sotto limite caratteri"},{v:"role non valida",t:"Role non valida"},{v:"altro",t:"Altro"}].forEach(function(opt){var o=el("option",null,opt.t);o.value=opt.v;reason.appendChild(o);});
+           customWrap.appendChild(el("label",null,"Dettaglio (solo per Altro)"));var custom=el("input");custom.type="text";custom.placeholder="Specifica il motivo";customWrap.appendChild(custom);customWrap.style.display="none";reason.addEventListener("change",function(){customWrap.style.display=reason.value==="altro"?"block":"none";});
+           var excludeBtn=el("button","action small danger","Escludi dai conteggi");excludeBtn.type="button";
+           excludeBtn.addEventListener(EV,function(){var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}excludeBtn.disabled=true;var oldRevision=pgEntry.data&&pgEntry.data._dbRevision;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,post.id,true,finalReason,oldRevision).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{excludeBtn.disabled=false;alert(applyErrorMessage(res&&res.code));}});});
+           controls.appendChild(reasonWrap);controls.appendChild(customWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
+         }else{exclusionBox.appendChild(el("div",null,"Aggiungi prima il link del Post per poterlo escludere."));}
+         b.appendChild(exclusionBox);
+         var rm=el("button","action danger small","Rimuovi");rm.type="button";rm.disabled=locked;rm.addEventListener(EV,function(){posts.splice(pos,1);renderPosts();});row.appendChild(a);row.appendChild(b);row.appendChild(rm);plist.appendChild(row);})(posts[p],p);}renderPosts();area.appendChild(plist);var addPost=el("button","action small","+ Aggiungi Post");addPost.type="button";addPost.disabled=locked;addPost.addEventListener(EV,function(){posts.push({id:Date.now(),link:"",nota:""});renderPosts();});area.appendChild(addPost);
         area.appendChild(el("h4",null,"Bonus del Mese"));var bonuses=el("div");bonuses.appendChild(bonusEditorRow(mese,{},true,1,locked));var extras=Array.isArray(mese.bonusAggiuntivi)?mese.bonusAggiuntivi:(mese.bonusAggiuntivi=[]);for(var bi=0;bi<extras.length;bi++)bonuses.appendChild(bonusEditorRow(mese,extras[bi],false,bi+1,locked));area.appendChild(bonuses);var addBonus=el("button","action small","+ Aggiungi Bonus");addBonus.type="button";addBonus.disabled=locked;addBonus.addEventListener(EV,function(){var nb={id:"narr_"+Date.now().toString(36),descrizione:"",pp:0,galeoni:0,altro:"",modalita:"all",primiPost:0,valore:"fixed",maxUtilizzi:0,usatiIniziali:0,usatiConfermati:false,variabileSu:"pp",utilizziManuali:0};extras.push(nb);bonuses.appendChild(bonusEditorRow(mese,nb,false,extras.length,locked));});area.appendChild(addBonus);
         var acts=el("div","archive-actions"),save=el("button","action small","Salva correzioni"),del=el("button","action danger small","Elimina questo Mese");save.type=del.type="button";save.disabled=del.disabled=locked;save.addEventListener(EV,function(){save.disabled=true;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,{MESI:working},"Correzione Camera Blindata dal Pannello Narratore",[{path:"MESI",before:"versione Player",after:"corretta dal Narratore"}]).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{save.disabled=false;alert(applyErrorMessage(res&&res.code));}});});del.addEventListener(EV,function(){if(!confirm("Eliminare il Mese «"+(mese.nome||"senza nome")+"» dal PG? L’operazione sarà registrata e potrà essere recuperata dagli snapshot."))return;working.splice(idx,1);del.disabled=true;window.fbPatchPgFields(pc,pgEntry.id,pgEntry.data&&pgEntry.data._dbRevision,{MESI:working},"Eliminato Mese errato dal Pannello Narratore",[{path:"MESI",before:mese.nome||"Mese",after:"rimosso"}]).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{del.disabled=false;alert(applyErrorMessage(res&&res.code));}});});acts.appendChild(save);acts.appendChild(del);area.appendChild(acts);
       }sel.addEventListener("change",renderMonth);sel.value=String(working.length-1);renderMonth();holder.appendChild(box);
