@@ -1859,11 +1859,7 @@
            exclusionBox.appendChild(el("div",null,"Motivo: "+(String(post.exclusionReason||"").trim()||"non specificato")));
            var restore=el("button","action small","Ripristina nei conteggi");restore.type="button";restore.disabled=locked;
            restore.title=locked?"Mese già accreditato: revoca prima l’accredito.":"Ripristina il Post nei conteggi";
-           restore.addEventListener(EV,function(){if(locked)return;restore.disabled=true;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,"").then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{restore.disabled=false;var msg=applyErrorMessage(res&&res.code);alert(msg+((res&&res.code)?"
-
-Codice tecnico: "+res.code:""));}}).catch(function(e){restore.disabled=false;console.error(e);alert("Ripristino non riuscito. Ricarica il pannello e riprova.
-
-Dettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));}});
+           restore.addEventListener(EV,function(){if(locked)return;restore.disabled=true;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,"").then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{restore.disabled=false;var msg=applyErrorMessage(res&&res.code);alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));}}).catch(function(e){restore.disabled=false;console.error(e);alert("Ripristino non riuscito. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));}});
            exclusionBox.appendChild(restore);
          }else if(isValidPostLink(post.link)){
            var controls=el("div","post-exclusion-controls"),reasonWrap=el("div"),customWrap=el("div");
@@ -1872,11 +1868,7 @@ Dettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));}});
            customWrap.appendChild(el("label",null,"Dettaglio (solo per Altro)"));var custom=el("input");custom.type="text";custom.placeholder="Specifica il motivo";customWrap.appendChild(custom);customWrap.style.display="none";reason.addEventListener("change",function(){customWrap.style.display=reason.value==="altro"?"block":"none";});
            var excludeBtn=el("button","action small danger","Escludi dai conteggi");excludeBtn.type="button";excludeBtn.disabled=locked;
            if(locked){excludeBox.appendChild(el("div","small-note","🔒 Mese già accreditato: revoca prima l’accredito per modificare i Post ai fini dei conteggi."));}
-           excludeBtn.addEventListener(EV,function(){if(locked)return;var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}excludeBtn.disabled=true;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{excludeBtn.disabled=false;var msg=applyErrorMessage(res&&res.code);alert(msg+((res&&res.code)?"
-
-Codice tecnico: "+res.code:""));}}).catch(function(e){excludeBtn.disabled=false;console.error(e);alert("Esclusione non riuscita. Ricarica il pannello e riprova.
-
-Dettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));});});
+           excludeBtn.addEventListener(EV,function(){if(locked)return;var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}excludeBtn.disabled=true;window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="player";caricaTutto(function(){renderApp();});}else{excludeBtn.disabled=false;var msg=applyErrorMessage(res&&res.code);alert(msg+((res&&res.code)?"\n\nCodice tecnico: "+res.code:""));}}).catch(function(e){excludeBtn.disabled=false;console.error(e);alert("Esclusione non riuscita. Ricarica il pannello e riprova.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));});});
            controls.appendChild(reasonWrap);controls.appendChild(customWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
            exclusionBox.appendChild(el("div","post-exclusion-help","Il Post resta nello storico, ma non entra nei conteggi finché non viene ripristinato."));
          }else{exclusionBox.appendChild(el("div",null,"Aggiungi prima il link del Post per poterlo escludere."));}
