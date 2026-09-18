@@ -534,19 +534,19 @@
     return false;
   }
 
-  function narratorPostRef(post){
+  window.narratorPostRef = function(post){
     post=post||{};
     if(post.id!=null && String(post.id).trim()!==""){return {id:String(post.id)};}
     if(post.globalNo!=null && Number(post.globalNo)>0){return {globalNo:Number(post.globalNo)};}
     return {link:String(post.link||"").trim()};
-  }
-  function narratorPostMatchesRef(post,ref){
+  };
+  window.narratorPostMatchesRef = function(post,ref){
     post=post||{};ref=ref||{};
     if(ref.id!=null && String(ref.id)!=="" && post.id!=null && String(post.id)===String(ref.id))return true;
     if(ref.globalNo!=null && Number(ref.globalNo)>0 && post.globalNo!=null && Number(post.globalNo)===Number(ref.globalNo))return true;
     if(ref.link!=null && String(ref.link).trim()!=="" && String(post.link||"").trim()===String(ref.link).trim())return true;
     return false;
-  }
+  };
   /*
    * Esclusione/ripristino di un singolo Post.
    *
@@ -573,7 +573,7 @@
         if(String(mese.id)!==String(monthId))continue;
         var posts=Array.isArray(mese.posts)?mese.posts:[];
         for(var pi=0;pi<posts.length;pi++){
-          if(narratorPostMatchesRef(posts[pi],postRef)){
+          if(window.narratorPostMatchesRef(posts[pi],postRef)){
             found={mese:mese,post:posts[pi]};
             break;
           }
@@ -1920,7 +1920,7 @@
              },20000);
              try{
                restoreStatus.textContent="Salvataggio ripristino…";
-               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),false,"");
+               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,window.narratorPostRef(post),false,"");
                clearTimeout(timer);
                if(res&&res.ok){
                  post.excludedFromProgression=false;
@@ -1961,7 +1961,7 @@
              },20000);
              try{
                exclusionStatus.textContent="Lettura del PG…";
-               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,narratorPostRef(post),true,finalReason);
+               var res=await window.fbSetPostProgressionExclusion(pc,pgEntry.id,mese.id,window.narratorPostRef(post),true,finalReason);
                clearTimeout(timer);
                if(res&&res.ok){
                  post.excludedFromProgression=true;
