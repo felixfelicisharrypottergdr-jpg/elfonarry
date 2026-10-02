@@ -1503,7 +1503,7 @@
     if(tipo==="adulto"){
       var psec=raw.slice(bounds.start,bounds.end),pm=/<div\b[^>]*class=["'][^"']*\bprestigio\b[^"']*["'][^>]*>\s*(\/\/|[-+]?\d+(?:[.,]\d+)?)\s*<\/div>/i.exec(psec);
       if(pm){
-        var token=pm[1],v=parseSheetValueToken(token),localTokenStart=pm.index+pm[0].indexOf(token),rs=bounds.start+localTokenStart;
+        var token=pm[1],v=parseSheetValueToken(token),localTokenStart=pm.index+pm[0].lastIndexOf(token),rs=bounds.start+localTokenStart;
         var ppos={start:rs,end:rs+token.length,token:token,alias:"Prestigio",widths:[]};
         /* La Scheda Adulti visualizza il Prestigio anche con la barra .max dentro .contpunti.
            Memorizziamo la posizione della/e width così il codice aggiornato mantiene
