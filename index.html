@@ -213,6 +213,7 @@
   .staff-value-missing{color:#8a2f2f;font-weight:700}
   .staff-value-ok{color:#355b3a;font-weight:700}
 
+  /* v86 - esclusione Post: motivo sempre libero e inserito manualmente dal Narratore. */
   /* v85 - recupero retroattivo Staff Token: separato dagli accrediti mensili */
   .st-recovery-scan{margin:18px 0 24px;padding:13px 14px;border:1px solid #8d78a8;border-radius:9px;background:#f4eff8;line-height:1.45}
   .st-recovery-scan strong{color:#4f3768}
@@ -235,6 +236,7 @@
   /* v53 - altezza del documento svincolata dall'altezza corrente dell'iframe */
   html, body{height:auto !important;min-height:0 !important;}
 
+  /* v86 - motivo esclusione Post a testo libero: nessuna causale preimpostata. */
   /* v84 - Staff Token: il Narratore conteggia +1 PP per ogni ST usato su un Post valido, senza nuove letture Firebase; dettaglio ST visibile nel mese. */
   /* v85 - recupero retroattivo PP da Staff Token sui mesi già accreditati; scansione storico ST solo su richiesta */
   /* v83 - sociali min 1, Prestigio sincronizzato con barra width, accredito passa al PG successivo */
@@ -2078,10 +2080,10 @@
            exclusionBox.appendChild(restore);
            exclusionBox.appendChild(restoreStatus);
          }else if(isValidPostLink(post.link)){
-           var controls=el("div","post-exclusion-controls"),reasonWrap=el("div"),customWrap=el("div");
-           reasonWrap.appendChild(el("label",null,"Motivo dell’esclusione"));var reason=el("select");
-           [{v:"sotto limite caratteri",t:"Sotto limite caratteri"},{v:"role non valida",t:"Role non valida"},{v:"altro",t:"Altro"}].forEach(function(opt){var o=el("option",null,opt.t);o.value=opt.v;reason.appendChild(o);});
-           customWrap.appendChild(el("label",null,"Dettaglio (solo per Altro)"));var custom=el("input");custom.type="text";custom.placeholder="Specifica il motivo";customWrap.appendChild(custom);customWrap.style.display="none";reason.addEventListener("change",function(){customWrap.style.display=reason.value==="altro"?"block":"none";});
+           var controls=el("div","post-exclusion-controls"),reasonWrap=el("div");
+           reasonWrap.appendChild(el("label",null,"Motivo dell’esclusione"));var reason=el("input");
+           reason.type="text";reason.placeholder="Es. sotto limite caratteri, role non valida, contenuto non pertinente…";reason.maxLength=300;reason.disabled=locked;
+           reasonWrap.appendChild(reason);
            var excludeBtn=el("button","action small danger","Escludi dai conteggi");excludeBtn.type="button";excludeBtn.disabled=false;
            var exclusionStatus=el("div","small-note","");
            exclusionStatus.style.marginTop="8px";
@@ -2089,8 +2091,8 @@
            if(locked){exclusionBox.appendChild(el("div","small-note","🔒 Mese già accreditato: l’esclusione resta bloccata finché non revochi l’accredito."));}
            excludeBtn.addEventListener(EV,async function(){
              if(locked){alert("Questo Mese è già stato accreditato. Revoca prima l’accredito, poi potrai escludere il Post dai conteggi.");return;}
-             var finalReason=reason.value==="altro"?String(custom.value||"").trim():String(reason.value||"");
-             if(reason.value==="altro"&&!finalReason){alert("Inserisci il motivo dell’esclusione.");return;}
+             var finalReason=String(reason.value||"").trim();
+             if(!finalReason){alert("Inserisci il motivo dell’esclusione.");reason.focus();return;}
              excludeBtn.disabled=true;
              var timer=setTimeout(function(){
                if(excludeBtn.disabled){excludeBtn.disabled=false;exclusionStatus.textContent="⚠ Il salvataggio non ha risposto entro 20 secondi. Ricarica il PG e controlla il Post.";}
@@ -2116,7 +2118,7 @@
                alert("Esclusione non riuscita.\n\nDettaglio tecnico: "+(e&&e.message?e.message:"errore sconosciuto"));
              }
            });
-           controls.appendChild(reasonWrap);controls.appendChild(customWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
+           controls.appendChild(reasonWrap);controls.appendChild(excludeBtn);exclusionBox.appendChild(controls);
            exclusionBox.appendChild(exclusionStatus);
            exclusionBox.appendChild(el("div","post-exclusion-help","Il Post resta nello storico, ma non entra nei conteggi finché non viene ripristinato."));
          }else{exclusionBox.appendChild(el("div",null,"Aggiungi prima il link del Post per poterlo escludere."));}
