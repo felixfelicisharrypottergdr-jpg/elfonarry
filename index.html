@@ -1,3 +1,4 @@
+<!-- v88 — Fix accrediti fantasma: il Narratore rileva record _staffMonths ancora marked applied ma rimasti fuori da _staffSequence/_staffState, li mostra nello Storico e permette una riparazione sicura che li segna come non applicati senza alterare i Parametri correnti. Risolve i mesi che l'Elfo Player vede come «accreditati a 0 Post» mentre il Narratore non mostra alcun accredito. Mantiene integralmente v87. 13/10/2026 -->
 <!-- v87 — Accrediti CB: il codice Scheda aggiornato applica anche gli utilizzi degli oggetti/Bonus a consumo; matching nome tollerante ma sicuro, contatore /max usato come conferma, rimozione automatica a esaurimento, blocco dell’accredito se il bersaglio è ambiguo/non riconoscibile. 10/10/2026 -->
 <!DOCTYPE html>
 <!-- v83 — macro-audit: rinomina PG allineata a Staff Token v56/v71 e associazione diretta, 07/09/2026 -->
@@ -485,6 +486,68 @@
       var changes=[],allKeys={};Object.keys(currentValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(nextValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(allKeys).forEach(function(k){if(stableJson(currentValues[k])!==stableJson(nextValues[k]))changes.push({path:"valoriStaff."+k,before:currentValues[k]==null?null:currentValues[k],after:nextValues[k]==null?null:nextValues[k]});});
       tx.set(auditRef,narratorEvent(pgId,"Accrediti e Parametri Sociali",action,changes));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+
+  /* v88 — riparazione record accredito orfano/fantasma. */
+  window.fbRepairOrphanStaffMonth = function(collectionName, pgId, recordKey, meseId){
+    if(!fbAuth.currentUser || fbAuth.currentUser.uid !== NARRATOR_UID){
+      return Promise.resolve({ok:false,code:"unauthorized"});
+    }
+    var ref=doc(fbDb,collectionName,pgId),
+        pc=personCollectionForAccrediti(collectionName),
+        auditRef=doc(collection(fbDb,pc,pgId,"audit"));
+
+    function normMonth(v){
+      return String(v||"").trim().replace(/\s+/g," ").toLocaleLowerCase("it-IT");
+    }
+
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(ref);
+      if(!snap.exists())throw new Error("missing-accrediti");
+
+      var cur=snap.data()||{},
+          state=cur._staffState||{},
+          months=Object.assign({},cur._staffMonths||{}),
+          seq=Array.isArray(cur._staffSequence)?cur._staffSequence.slice():[],
+          record=months[recordKey];
+
+      if(!record || record.applied===false)throw new Error("missing-record");
+
+      /* Se è ancora referenziato dalle strutture autoritative, non è un fantasma:
+         in quel caso va usata la revoca normale. */
+      if(seq.indexOf(recordKey)>=0)throw new Error("not-orphan");
+      if(String(state.lastMonthKey||"")===String(recordKey))throw new Error("not-orphan");
+      if(state.lastMonthName && record.monthName &&
+         normMonth(state.lastMonthName)===normMonth(record.monthName)){
+        throw new Error("not-orphan");
+      }
+
+      record=Object.assign({},record,{
+        applied:false,
+        repairedAt:serverTimestamp(),
+        repairReason:"orphan-applied-record"
+      });
+      months[recordKey]=record;
+
+      var action="Riparato accredito fantasma "+String(record.monthName||recordKey);
+      var updateObj={
+        _staffMonths:months,
+        _lastModifiedAt:serverTimestamp(),
+        _lastModifiedBy:"narratore",
+        _lastAction:action
+      };
+      if(meseId!=null && String(meseId)!==""){updateObj[String(meseId)]=false;}
+
+      tx.set(ref,updateObj,{merge:true});
+      tx.set(auditRef,narratorEvent(
+        pgId,
+        "Accrediti e Parametri Sociali",
+        action+" (record fuori dallo Storico ufficiale; valori Staff non modificati)",
+        []
+      ));
+    }).then(function(){return {ok:true};})
+      .catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
   };
 
   window.fbResolveDeleteRequest = function(collectionName, pgId){
@@ -2268,6 +2331,67 @@
         hist.appendChild(row);
       })(appliedSeq[ahi],ahi===appliedSeq.length-1);
       det.appendChild(hist);
+    }
+
+
+    /* v88 — mostra record applied:true rimasti fuori dallo Storico ufficiale.
+       Prima l'Elfo Player li vedeva come bloccanti, ma il Narratore non li mostrava. */
+    var orphanKeys=[],staffMonthKeys=Object.keys(staffMonths);
+    for(var oki=0;oki<staffMonthKeys.length;oki++){
+      var okKey=staffMonthKeys[oki],okRec=staffMonths[okKey];
+      if(!okRec || okRec.applied===false)continue;
+      if(staffSeq.indexOf(okKey)>=0)continue;
+      if(String(state.lastMonthKey||"")===String(okKey))continue;
+      if(state.lastMonthName && okRec.monthName &&
+         normalizeMonthName(state.lastMonthName)===normalizeMonthName(okRec.monthName))continue;
+      orphanKeys.push(okKey);
+    }
+
+    if(orphanKeys.length){
+      var orphanBox=el("div","warning-alert");
+      orphanBox.appendChild(el("b",null,"⚠ Accredito/i fantasma rilevato/i"));
+      orphanBox.appendChild(el("div","small-note",
+        "Questi record risultano ancora applicati nel database, ma non fanno parte dello Storico ufficiale né dello stato corrente. Possono bloccare la creazione del Mese nell’Elfo del Player. La riparazione li segna come non applicati senza modificare PP, Galeoni o Parametri Sociali correnti."
+      ));
+
+      for(var oi=0;oi<orphanKeys.length;oi++)(function(orphanKey){
+        var rec=staffMonths[orphanKey]||{},
+            row=el("div","history-row"),
+            label=(rec.monthName||orphanKey)+" — "+Math.max(0,parseInt(rec.postCount,10)||0)+" post";
+        if(rec.source==="zero")label+=" · accredito 0 post";
+        row.appendChild(el("b",null,label));
+
+        var repair=el("button","action danger small","Sblocca accredito fantasma");
+        repair.style.marginLeft="10px";
+        repair.addEventListener(EV,function(){
+          var msg="Riparare il record anomalo di "+(rec.monthName||orphanKey)+"?\n\n"+
+            "Il record verrà segnato come NON applicato e l’Elfo del Player potrà creare nuovamente quel Mese. "+
+            "PP, Galeoni e Parametri Sociali correnti NON verranno modificati.";
+          if(!confirm(msg))return;
+          repair.disabled=true;
+          window.fbRepairOrphanStaffMonth(
+            accreditiCollection,
+            pgEntry.id,
+            orphanKey,
+            rec.meseId?String(rec.meseId):""
+          ).then(function(res){
+            if(res&&res.ok){
+              clearAccreditiCache(accreditiCollection,pgEntry.id);
+              caricaTutto(function(){renderApp();});
+            }else{
+              repair.disabled=false;
+              var code=res&&res.code?res.code:"error";
+              alert(code==="not-orphan"
+                ?"Il record è ancora collegato allo Storico ufficiale: non può essere riparato come fantasma. Usa la normale revoca."
+                :"Riparazione non riuscita: "+code);
+            }
+          });
+        });
+        row.appendChild(repair);
+        orphanBox.appendChild(row);
+      })(orphanKeys[oi]);
+
+      det.appendChild(orphanBox);
     }
 
     var zero=el("div","zero-month");zero.appendChild(el("div","calc-extra-title","PG senza Camera Blindata del mese / 0 post"));zero.appendChild(el("p","small-note","Usalo solo se il PG non ha creato il Mese nel proprio Elfo. Anche qui la base viene letta dalla Scheda Valori incollata sopra: copia il codice aggiornato nel Forum e solo dopo conferma l’accredito."));
