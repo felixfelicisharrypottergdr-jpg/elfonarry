@@ -1,3 +1,4 @@
+<!-- v89 — Ottimizzazione e fix: lettura lazy PG/Registro, chiusura dopo accredito, parser Prestigio e controllo generazione Scheda; meno ricaricamenti Firebase. 03/11/2026 -->
 <!-- v88 — Fix accrediti fantasma: il Narratore rileva record _staffMonths ancora marked applied ma rimasti fuori da _staffSequence/_staffState, li mostra nello Storico e permette una riparazione sicura che li segna come non applicati senza alterare i Parametri correnti. Risolve i mesi che l'Elfo Player vede come «accreditati a 0 Post» mentre il Narratore non mostra alcun accredito. Mantiene integralmente v87. 13/10/2026 -->
 <!-- v87 — Accrediti CB: il codice Scheda aggiornato applica anche gli utilizzi degli oggetti/Bonus a consumo; matching nome tollerante ma sicuro, contatore /max usato come conferma, rimozione automatica a esaurimento, blocco dell’accredito se il bersaglio è ambiguo/non riconoscibile. 10/10/2026 -->
 <!DOCTYPE html>
@@ -303,6 +304,11 @@
   .sheet-values-title{font-size:.78rem;font-weight:900;text-transform:uppercase;letter-spacing:.035em;margin-bottom:5px}
   .sheet-values-list{font-size:.84rem;line-height:1.55;font-weight:700}
   .registry-top .summary-code{border:2px solid #b56b12;background:#fff7df;box-shadow:0 4px 12px rgba(181,107,18,.10)}
+  details.registry-top{margin-top:4px;margin-bottom:20px}
+  details.registry-top>summary.registry-toggle{cursor:pointer;font-size:1rem;font-weight:800;color:var(--green-dark);line-height:1.4;padding:3px 0;list-style:revert}
+  .registry-content{margin-top:14px}
+  .operation-notice{margin:8px 0 18px;padding:11px 13px;border:1px solid #8fa985;border-left:4px solid var(--ok);border-radius:7px;background:#eef6ea;color:#245331;font-size:.84rem;font-weight:750;line-height:1.45}
+  .operation-notice:focus{outline:2px solid var(--ok);outline-offset:2px}
   .registry-attention{margin:10px 0;padding:10px 12px;border-left:4px solid #b56b12;background:#fff0cf;color:#613b08;font-size:.82rem;font-weight:750;line-height:1.5}
   .pg-name-editor{margin:0 0 14px;padding:11px 12px;border:1px solid #b9a66c;border-radius:8px;background:#fffdf5}
   .pg-name-editor .archive-actions{align-items:end}
@@ -442,7 +448,8 @@
       var savedRecord=Object.assign({},record,{applied:true,appliedAt:serverTimestamp(),pgRevisionAtApply:remoteRevision});months[recordKey]=savedRecord;
       if(seq.indexOf(recordKey)<0){seq.push(recordKey);}
       var nextState=Object.assign({},state,{tipo:record.tipo,values:record.after,lastMonthKey:recordKey,lastMonthName:record.monthName,lastMonthOrder:record.monthOrder,updatedAt:serverTimestamp()});
-      var updateObj={_staffState:nextState,_staffMonths:months,_staffSequence:seq,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:"Accreditato "+record.monthName+" con aggiornamento valori"};
+      var monthPatch={};monthPatch[recordKey]=savedRecord;
+      var updateObj={_staffState:nextState,_staffMonths:monthPatch,_staffSequence:seq,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:"Accreditato "+record.monthName+" con aggiornamento valori"};
       if(meseId!=null && String(meseId)!==""){updateObj[String(meseId)]=true;}
       tx.set(ref,updateObj,{merge:true});
       var changes=[],keys=Object.keys(record.after||{});for(var i=0;i<keys.length;i++){var k=keys[i];changes.push({path:"valoriStaff."+k,before:record.before?record.before[k]:null,after:record.after[k]});}
@@ -480,7 +487,8 @@
       var prevKey=seq.length?seq[seq.length-1]:"",prev=prevKey?months[prevKey]:null;
       var nextState=Object.assign({},state,{values:nextValues,lastMonthKey:prevKey,lastMonthName:prev&&prev.monthName?prev.monthName:"",lastMonthOrder:prev&&Number.isFinite(Number(prev.monthOrder))?Number(prev.monthOrder):-1,updatedAt:serverTimestamp()});
       var action=!exactAfter?("Revocato accredito "+record.monthName+" preservando le variazioni successive"):("Revocato accredito "+record.monthName+" e ripristinati valori precedenti");
-      var updateObj={_staffState:nextState,_staffMonths:months,_staffSequence:seq,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:action};
+      var monthPatch={};monthPatch[recordKey]=record;
+      var updateObj={_staffState:nextState,_staffMonths:monthPatch,_staffSequence:seq,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:action};
       if(meseId!=null && String(meseId)!==""){updateObj[String(meseId)]=false;}
       tx.set(ref,updateObj,{merge:true});
       var changes=[],allKeys={};Object.keys(currentValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(nextValues||{}).forEach(function(k){allKeys[k]=1;});Object.keys(allKeys).forEach(function(k){if(stableJson(currentValues[k])!==stableJson(nextValues[k]))changes.push({path:"valoriStaff."+k,before:currentValues[k]==null?null:currentValues[k],after:nextValues[k]==null?null:nextValues[k]});});
@@ -531,8 +539,9 @@
       months[recordKey]=record;
 
       var action="Riparato accredito fantasma "+String(record.monthName||recordKey);
+      var monthPatch={};monthPatch[recordKey]=record;
       var updateObj={
-        _staffMonths:months,
+        _staffMonths:monthPatch,
         _lastModifiedAt:serverTimestamp(),
         _lastModifiedBy:"narratore",
         _lastAction:action
@@ -1108,6 +1117,9 @@
   var pgActiveTabs = {};
   var pgMonthFilters = {};
   var lastAccredited = null;
+  var registryExpanded = false;
+  var operationNotice = "";
+  var documentSizeCache = new WeakMap();
   /* v79: il codice completo della Scheda valori resta soltanto nella memoria della pagina.
      In Firebase vengono salvati, come già avveniva, esclusivamente i valori numerici correnti. */
   var localSheetCodes = {};
@@ -1448,13 +1460,39 @@
       var after=nend,vre=/<tr\b[^>]*class=["'][^"']*\bvalori\b[^"']*["'][^>]*>[\s\S]*?<\/tr>/i,vm=vre.exec(raw.slice(after,bounds.end));if(vm){var vstart=after+vm.index,vend=vstart+vm[0].length;vals=extractTdCells(raw,vstart,vend);}
     }
     var aliases=sheetFieldAliases(tipo),byNorm={};Object.keys(aliases).forEach(function(key){(aliases[key]||[]).forEach(function(a){byNorm[normSheetLabel(a)]=key;});});
-    var found={};for(var i=0;i<Math.min(names.length,vals.length);i++){
-      var label=normSheetLabel(names[i].html),key=byNorm[label];if(!key||found[key])continue;var tok=rawCellToken(raw,vals[i].start,vals[i].end);if(!tok)continue;values[key]=tok.value;positions[key]={start:tok.start,end:tok.end,token:tok.token,alias:stripSheetMarkup(names[i].html)};found[key]=true;
+    var found={};for(var i=0;i<names.length;i++){
+      var label=normSheetLabel(names[i].html),key=byNorm[label];if(!key)continue;
+      if(found[key]){ambiguous.push(stripSheetMarkup(names[i].html)+" (intestazione ripetuta)");continue;}
+      found[key]=true;
+      var tok=i<vals.length?rawCellToken(raw,vals[i].start,vals[i].end):null;
+      if(!tok){ambiguous.push(stripSheetMarkup(names[i].html)+" (numero non leggibile)");continue;}
+      values[key]=tok.value;positions[key]={start:tok.start,end:tok.end,token:tok.token,alias:stripSheetMarkup(names[i].html)};
     }
     if(tipo==="adulto"){
-      var psec=raw.slice(bounds.start,bounds.end),pm=/<div\b[^>]*class=["'][^"']*\bprestigio\b[^"']*["'][^>]*>\s*(\/\/|[-+]?\d+(?:[.,]\d+)?)\s*<\/div>/i.exec(psec);
-      if(pm){var token=pm[1],v=parseSheetValueToken(token),localTokenStart=pm.index+pm[0].indexOf(token),rs=bounds.start+localTokenStart;values.prestigio=v;positions.prestigio={start:rs,end:rs+token.length,token:token,alias:"Prestigio"};}
-      else{values.prestigio=null;}
+      /* Alcune Schede hanno il Prestigio nella normale riga <tr class="valori">,
+         altre nel widget <div class="prestigio">. Il vecchio parser azzerava
+         il valore valido trovato nella tabella se il widget non esisteva. */
+      /* Il widget può trovarsi dopo la tabella dei sociali, e non soltanto
+         al suo interno: cercalo nella Scheda completa senza alterare gli offset. */
+      var prx=/<(div|span)\b[^>]*class=["'][^"']*\bprestigio\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi,pm,prestigeCount=0;
+      while((pm=prx.exec(raw))){
+        prestigeCount++;
+        var innerStart=pm.index+pm[0].indexOf(">")+1;
+        var visible=stripSheetMarkup(pm[2]);
+        if(!/^(?:\/\/|[-+]?\d+(?:[.,]\d+)?)$/.test(visible)){
+          ambiguous.push("Prestigio (widget con valore non univoco)");continue;
+        }
+        var tok=rawCellToken(raw,innerStart,innerStart+pm[2].length);
+        if(!tok){ambiguous.push("Prestigio (widget senza numero leggibile)");continue;}
+        if(positions.prestigio&&positions.prestigio.start!==tok.start){
+          /* Non scegliere arbitrariamente fra due numeri del Prestigio. */
+          ambiguous.push("Prestigio (più valori distinti nella Scheda)");continue;
+        }
+        values.prestigio=tok.value;
+        positions.prestigio={start:tok.start,end:tok.end,token:tok.token,alias:"Prestigio"};
+      }
+      if(prestigeCount>1)ambiguous.push("Prestigio (più riquadri)");
+      if(!Object.prototype.hasOwnProperty.call(values,"prestigio"))values.prestigio=null;
     }
     var defs=staffFieldDefs(tipo);for(var di=0;di<defs.length;di++){var d=defs[di];if(d.kind!=="social")continue;if(!Object.prototype.hasOwnProperty.call(values,d.key))values[d.key]=null;if(d.required&&values[d.key]===null)missing.push(d.label);}
     return {values:values,positions:positions,missing:missing,ambiguous:ambiguous};
@@ -1607,6 +1645,17 @@
     for(var r=0;r<repls.length;r++)code=code.slice(0,repls[r].start)+repls[r].text+code.slice(repls[r].end);
     var bag=applyMonthBagUpdatesToSheet(code,mese,posts);
     if(!bag.ok)return {ok:false,code:"",changed:parts,debtSettled:recordHasDebtSettlement(record),bagApplied:bag.applied||[],bagWarnings:bag.warnings||[]};
+    /* Ricontrolla il codice finale, non soltanto i calcoli: ogni campo numerico
+       presente nella Scheda deve coincidere con il valore dopo l'accredito. */
+    var verified=parseSheetCode(tipo,bag.code),mismatch=[],defs=staffFieldDefs(tipo);
+    if(!verified.ok)mismatch=mismatch.concat(verified.missing||[],verified.ambiguous||[]);
+    for(var vi=0;vi<defs.length;vi++){
+      var def=defs[vi],expected=optionalNum(record.after&&record.after[def.key]);
+      if(expected===null)continue;
+      var actual=optionalNum(verified.values&&verified.values[def.key]);
+      if(actual===null||Math.abs(actual-expected)>.001){mismatch.push(def.label);}
+    }
+    if(mismatch.length)return {ok:false,code:"",changed:parts,mismatch:Array.from(new Set(mismatch))};
     return {ok:true,code:bag.code,changed:parts,debtSettled:recordHasDebtSettlement(record),bagApplied:bag.applied||[],bagWarnings:[]};
   }
   function promoteGeneratedSheet(pgId,tipo,meseId){
@@ -1811,7 +1860,9 @@
       function collectDeletedCleanup(list,collectionName){for(var i=0;i<list.length;i++){var x=list[i];if(x&&x.data&&x.data._deleted&&window.fbRetryDeletedCleanup){retry.push(window.fbRetryDeletedCleanup(collectionName,x.id));}}}
       collectDeletedCleanup(allAdulti,"personaggi_adulti");collectDeletedCleanup(allStudenti,"personaggi_studenti");
       datiAdulti=allAdulti.filter(function(x){return !(x&&x.data&&x.data._deleted);});datiStudenti=allStudenti.filter(function(x){return !(x&&x.data&&x.data._deleted);});
-      if(retry.length){Promise.all(retry.map(function(p){return Promise.resolve(p).catch(function(e){console.error(e);return false;});})).then(function(){callback();});}else{callback();}
+      /* La pulizia tecnica non deve bloccare la consultazione dei PG. */
+      callback();
+      if(retry.length){Promise.all(retry.map(function(p){return Promise.resolve(p).catch(function(e){console.error(e);return false;});})).catch(console.error);}
     }).catch(function(e){console.error(e);alert("Impossibile caricare l’elenco dei PG. Controlla la connessione e le regole Firebase.");});
   }
 
@@ -1980,7 +2031,19 @@
     var btnRefresh=el("button","action small","↻ Aggiorna");btnRefresh.addEventListener(EV,function(){btnRefresh.textContent="Aggiornamento…";caricaTutto(function(){renderApp();});});toolbar.appendChild(btnRefresh);
     var btnLogout=el("button","action small","Esci");btnLogout.addEventListener(EV,function(){window.fbSignOut();});toolbar.appendChild(btnLogout);p.appendChild(toolbar);
 
-    var registry=el("div","registry-top");registry.id="riepilogo-mensile";p.appendChild(registry);renderRiepilogoMensile(registry);
+    if(operationNotice){var notice=el("div","operation-notice",operationNotice);notice.setAttribute("role","status");p.appendChild(notice);}
+    /* Il Registro è disponibile con un click, senza scaricare per forza tutti
+       gli accrediti dei PG quando il Narratore deve lavorare su una sola scheda. */
+    var registry=el("details","registry-top");registry.id="riepilogo-mensile";registry.open=registryExpanded;
+    registry.appendChild(el("summary","registry-toggle","📋 Testo per il Registro accrediti — apri per consultare e copiare"));
+    var registryContent=el("div","registry-content");registry.appendChild(registryContent);
+    registry.addEventListener("toggle",function(){
+      if(!registry.isConnected)return;
+      registryExpanded=registry.open;
+      if(registry.open && !registryContent.childNodes.length)renderRiepilogoMensile(registryContent);
+    });
+    p.appendChild(registry);
+    if(registryExpanded)renderRiepilogoMensile(registryContent);
 
     var searchBox=el("div","dashboard-search");searchBox.appendChild(el("div","dashboard-search-title","<b>🔎 Cerca un PG</b>"));var searchField=el("div","dashboard-search-field"),searchInput=el("input");searchInput.type="search";searchInput.placeholder="Nome o cognome…";searchInput.value=filtroPg;searchField.appendChild(searchInput);searchBox.appendChild(searchField);p.appendChild(searchBox);
     var matchPg=function(x){var q=String(filtroPg||"").trim().toLowerCase();return !q||String(x.id||"").toLowerCase().indexOf(q)>=0||pgDisplayName(x).toLowerCase().indexOf(q)>=0;};
@@ -2010,7 +2073,7 @@
     for(var pi=0;pi<entries.length;pi++){
       (function(entry){var cacheKey=accreditiCacheKey(entry.coll,entry.pg.id);if(Object.prototype.hasOwnProperty.call(accreditiCache,cacheKey))return;pending.push(loadAccreditiCached(entry.coll,entry.pg.id));})(entries[pi]);
     }
-    if(pending.length){container.appendChild(el("p","small-note","Caricamento accrediti…"));Promise.all(pending).then(function(){renderRiepilogoMensile(container);}).catch(function(e){console.error(e);container.innerHTML="";container.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti. Controlla la connessione e riprova."));});return;}
+    if(pending.length){container.appendChild(el("p","small-note","Caricamento accrediti…"));Promise.all(pending).then(function(){if(container.isConnected)renderRiepilogoMensile(container);}).catch(function(e){console.error(e);if(container.isConnected){container.innerHTML="";container.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti. Controlla la connessione e riprova."));}});return;}
 
     var monthMap={};
     function addMonth(nome){var c=canonicalMonthLabel(nome),k=monthKey(c);if(c!==""&&k>=0)monthMap[c]=k;}
@@ -2061,7 +2124,13 @@
   }
 
   function deepClone(v){ return JSON.parse(JSON.stringify(v == null ? {} : v)); }
-  function stateSizeBytes(obj){try{return new Blob([JSON.stringify(obj||{})]).size;}catch(e){return 0;}}
+  function stateSizeBytes(obj){
+    if(obj&&typeof obj==="object"&&documentSizeCache.has(obj))return documentSizeCache.get(obj);
+    try{var bytes=new Blob([JSON.stringify(obj||{})]).size;
+      if(obj&&typeof obj==="object")documentSizeCache.set(obj,bytes);
+      return bytes;
+    }catch(e){return 0;}
+  }
   function sizeLabel(bytes){return bytes<1024?bytes+" B":(bytes/1024).toFixed(1)+" KB";}
   function firestoreDocUsage(bytes){
     var max=1024*1024;
@@ -2411,7 +2480,7 @@
       var entry=zeroAppliedEntry(),existing=entry?entry.record:null,rk=zeroMonthRecordKey(zs.value);if(existing){alert("Questo mese è già accreditato: usa lo Storico accrediti applicati.");return;}
       var zst=localSheetState(pgEntry.id),tag="zero:"+normalizeMonthName(zs.value);if(!zst.parsed||!zst.parsed.ok){alert("Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».");return;}if(!zst.generated||String(zst.generated.meseId||"")!==tag){alert("Prima genera il codice Scheda aggiornato per questo mese.");return;}
       var norm=normalizeMonthName(zs.value),mesi=pgEntry.data.MESI||[];for(var zi=0;zi<mesi.length;zi++){if(!isImportedStudentMonth(mesi[zi])&&normalizeMonthName(mesi[zi].nome)===norm){alert("Questo PG possiede già una CB per "+canonicalMonthLabel(zs.value)+": usa il calcolatore nella riga di quel Mese.");return;}}
-      var rec=refreshZeroPreview();if(!rec)return;if(!confirm("Confermi di aver già reincollato sul Forum la Scheda Valori aggiornata e di voler accreditare "+pgDisplayName(pgEntry)+" per "+rec.monthName+" con 0 post?"))return;zbtn.disabled=true;var base=normalizeStaffValues(tipo,zst.parsed.values||{});window.fbApplyStaffMonth(accreditiCollection,pgEntry.id,rk,"",rec,base,pgEntry.data&&pgEntry.data._dbRevision,null,true).then(function(res){if(res.ok){promoteGeneratedSheet(pgEntry.id,tipo,tag);clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{zbtn.disabled=false;alert(applyErrorMessage(res.code));}});
+      var rec=refreshZeroPreview();if(!rec)return;if(!confirm("Confermi di aver già reincollato sul Forum la Scheda Valori aggiornata e di voler accreditare "+pgDisplayName(pgEntry)+" per "+rec.monthName+" con 0 post?"))return;zbtn.disabled=true;var base=normalizeStaffValues(tipo,zst.parsed.values||{});window.fbApplyStaffMonth(accreditiCollection,pgEntry.id,rk,"",rec,base,pgEntry.data&&pgEntry.data._dbRevision,null,true).then(function(res){if(res&&res.ok){promoteGeneratedSheet(pgEntry.id,tipo,tag);clearAccreditiCache(accreditiCollection,pgEntry.id);lastAccredited=null;openOnlyPg(null);operationNotice="✓ "+pgEntry.id+" — "+rec.monthName+" accreditato con 0 post. Puoi aprire il PG successivo.";renderApp();}else{zbtn.disabled=false;alert(applyErrorMessage(res&&res.code));}}).catch(function(e){console.error(e);zbtn.disabled=false;alert("Operazione interrotta. Controlla lo Storico prima di riprovare.");});
     });
     card.appendChild(det);
   }
@@ -2433,7 +2502,7 @@
         codeOut.style.display="block";codeTa.value=built.code;live.generated={code:built.code,meseId:String(mese.id),record:rec};box.disabled=false;
       }else{
         codeOut.style.display="none";codeTa.value="";box.disabled=true;
-        var why=(built.bagWarnings&&built.bagWarnings.length)?(" Problema Bagaglio: "+built.bagWarnings.join(" · ")):(built.missing&&built.missing.length?(" Mancano: "+built.missing.join(", ")+"."):"");
+        var why=(built.mismatch&&built.mismatch.length)?(" Verifica fallita per: "+built.mismatch.join(", ")+"."):(built.bagWarnings&&built.bagWarnings.length)?(" Problema Bagaglio: "+built.bagWarnings.join(" · ")):(built.missing&&built.missing.length?(" Mancano: "+built.missing.join(", ")+"."):"");
         sheetList.textContent="⚠ Il calcolo è stato eseguito, ma non posso generare in sicurezza la Scheda aggiornata."+why;
         if(live.generated&&String(live.generated.meseId||"")===String(mese.id))live.generated=null;
       }return rec;
@@ -2446,12 +2515,39 @@
 
   function buildPgCard(pgEntry,accreditiCollection){
     var card=el("div","card pg-card"),mesi=Array.isArray(pgEntry.data.MESI)?pgEntry.data.MESI:[],header=el("button","pg-card-summary");header.type="button";header.setAttribute("aria-expanded",openPgCards[pgEntry.id]?"true":"false");var title=el("span","pg-card-name",pgDisplayName(pgEntry)),pendingBadge=el("span","pending-month-badge","");pendingBadge.style.display="none";var meta=el("span","pg-card-meta",mesi.length+" mesi · ultima modifica "+fmtDateTime(pgEntry.data&&pgEntry.data._lastModifiedAt));header.appendChild(title);header.appendChild(pendingBadge);if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE)header.appendChild(el("span","delete-request-badge","⚠ ELIMINAZIONE"));header.appendChild(meta);card.appendChild(header);
-    var body=el("div","pg-card-body");body.hidden=!openPgCards[pgEntry.id];card.appendChild(body);header.addEventListener(EV,function(){var wasOpen=!!openPgCards[pgEntry.id];if(wasOpen){openPgCards[pgEntry.id]=false;}else{openOnlyPg(pgEntry.id);}renderApp();});
-    if(lastAccredited&&lastAccredited.pgId===pgEntry.id){openOnlyPg(pgEntry.id);body.hidden=false;header.setAttribute("aria-expanded","true");}
+    var body=el("div","pg-card-body");body.hidden=!openPgCards[pgEntry.id];card.appendChild(body);
+    header.addEventListener(EV,function(){
+      var wasOpen=!!openPgCards[pgEntry.id];
+      openOnlyPg(wasOpen?null:pgEntry.id);
+      lastAccredited=null;
+      operationNotice="";
+      renderApp();
+    });
+    /* I PG chiusi sono soltanto intestazioni: nessun editor, calcolatore o
+       richiesta Firebase viene creato finché il Narratore non li apre. */
+    if(!openPgCards[pgEntry.id]){
+      var peek=accreditiCache[accreditiCollection+"__"+pgEntry.id];
+      if(peek){var remaining=0;for(var qi=0;qi<mesi.length;qi++){var qm=mesi[qi];if(isImportedStudentMonth(qm))continue;if(!peek[qm.id]&&!findAppliedRecordEntryForMonth(peek,qm,normalizeMonthName(qm.nome)))remaining++;}
+        if(remaining){pendingBadge.textContent=remaining+(remaining===1?" MESE":" MESI")+" DA ACCREDITARE";pendingBadge.style.display="inline-block";}}
+      return card;
+    }
     if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){var req=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l’eliminazione.</b>");var dis=el("button","action small","Annulla richiesta");dis.addEventListener(EV,function(){var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";dis.disabled=true;window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){if(ok)caricaTutto(function(){renderApp();});else{dis.disabled=false;alert("Operazione non riuscita.");}});});req.appendChild(dis);body.appendChild(req);}
-    var tabs=el("div","pg-tabs"),panels={},active=pgActiveTabs[pgEntry.id]||"credit";[["credit","✅ Accredito"],["player","✏️ Dati Player"],["manage","⚙️ Gestione"]].forEach(function(x){var b=el("button","pg-tab"+(active===x[0]?" active":""),x[1]);b.type="button";b.addEventListener(EV,function(){pgActiveTabs[pgEntry.id]=x[0];Object.keys(panels).forEach(function(k){panels[k].hidden=k!==x[0];});var bs=tabs.querySelectorAll(".pg-tab");for(var i=0;i<bs.length;i++)bs[i].classList.remove("active");b.classList.add("active");});tabs.appendChild(b);var p=el("div","pg-tab-panel");p.hidden=active!==x[0];panels[x[0]]=p;});body.appendChild(tabs);body.appendChild(panels.credit);body.appendChild(panels.player);body.appendChild(panels.manage);
+    var tabs=el("div","pg-tabs"),panels={},active=pgActiveTabs[pgEntry.id]||"credit";[["credit","✅ Accredito"],["player","✏️ Dati Player"],["manage","⚙️ Gestione"]].forEach(function(x){var b=el("button","pg-tab"+(active===x[0]?" active":""),x[1]);b.type="button";b.addEventListener(EV,function(){pgActiveTabs[pgEntry.id]=x[0];Object.keys(panels).forEach(function(k){panels[k].hidden=k!==x[0];});var bs=tabs.querySelectorAll(".pg-tab");for(var i=0;i<bs.length;i++)bs[i].classList.remove("active");b.classList.add("active");ensureNonCreditTab(x[0]);});tabs.appendChild(b);var p=el("div","pg-tab-panel");p.hidden=active!==x[0];panels[x[0]]=p;});body.appendChild(tabs);body.appendChild(panels.credit);body.appendChild(panels.player);body.appendChild(panels.manage);
     panels.credit.appendChild(el("div","quick-help","<b>Flusso accredito:</b> controlla i guadagni letti dall’Elfo del PG → incolla la Scheda Valori attuale → clicca «Leggi Scheda e avvia i calcoli» → controlla il risultato e copia la Scheda aggiornata → reincollala sul Forum → spunta «Accreditato». Solo allora il mese viene registrato nell’Elfo del PG e aggiunto al testo unico per il Registro Forum."));
     var cacheKey=accreditiCollection+"__"+pgEntry.id;
+    var activeAccData=null,nonCreditBuilt={};
+    function ensureNonCreditTab(tab){
+      if(!activeAccData||nonCreditBuilt[tab])return;
+      if(tab==="player"){
+        appendPlayerDataEditor(panels.player,pgEntry,accreditiCollection,activeAccData);
+        nonCreditBuilt.player=true;
+        return;
+      }
+      if(tab!=="manage")return;
+      var accreditiData=activeAccData;
+      panels.manage.innerHTML="";appendLastModification(panels.manage,pgEntry.data);var dup=duplicateMonthNameCount(mesi);if(dup)panels.manage.appendChild(el("div","warning-alert","⚠ "+dup+" Mese/i con nome duplicato."));var dg=duplicateGlobalNumbersInData(pgEntry.data);if(dg.length)panels.manage.appendChild(el("div","warning-alert","⚠ Numeri globali duplicati: <b>"+dg.join(", ")+"</b>."));var manage=el("div","pg-manage"),archive=el("button","action small archive","Archivia PG"),del=el("button","action danger small","Elimina PG");archive.addEventListener(EV,function(){if(!confirm("Archiviare "+pgEntry.id+"?"))return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";archive.disabled=true;window.fbSetArchived(pc,pgEntry.id,true).then(function(ok){if(ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{archive.disabled=false;alert("Operazione non riuscita.");}});});del.addEventListener(EV,function(){var typed=prompt("Scrivi esattamente il nome del PG per eliminarlo definitivamente:\n"+pgEntry.id);if(typed!==pgEntry.id)return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";del.disabled=true;window.fbDeletePg(pc,accreditiCollection,pgEntry.id).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{del.disabled=false;alert("Eliminazione non riuscita.");}});});manage.appendChild(archive);manage.appendChild(del);appendArchiveUnlockButton(manage,pgEntry,accreditiCollection);panels.manage.appendChild(manage);appendPeriodicArchiveTools(panels.manage,pgEntry,accreditiCollection,accreditiData);appendHistoryTools(panels.manage,pgEntry,accreditiCollection);
+      nonCreditBuilt.manage=true;
+    }
     function renderWithAcc(accreditiData){
       var pendingCount=0;for(var pci=0;pci<mesi.length;pci++){var pm=mesi[pci];if(isImportedStudentMonth(pm))continue;var pe=findAppliedRecordEntryForMonth(accreditiData,pm,normalizeMonthName(pm&&pm.nome));if(!accreditiData[pm.id]&&!pe)pendingCount++;}pendingBadge.textContent=pendingCount?(pendingCount+" "+(pendingCount===1?"MESE":"MESI")+" DA ACCREDITARE"):"";pendingBadge.style.display=pendingCount?"inline-block":"none";
       panels.credit.innerHTML="";panels.credit.appendChild(el("div","quick-help","<b>Flusso accredito:</b> controlla i guadagni letti dall’Elfo del PG → incolla la Scheda Valori attuale → clicca «Leggi Scheda e avvia i calcoli» → controlla il risultato e copia la Scheda aggiornata → reincollala sul Forum → spunta «Accreditato». Solo allora il mese viene registrato nell’Elfo del PG e aggiunto al testo unico per il Registro Forum."));appendSheetCodeReader(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffLedger(panels.credit,pgEntry,accreditiCollection,accreditiData);
@@ -2459,11 +2555,26 @@
       var rendered=0,ordered=mesi.slice().sort(function(a,b){return monthKey(b&&b.nome)-monthKey(a&&a.nome);});for(var m=0;m<ordered.length;m++)(function(mese){var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),isDone=!!accreditiData[mese.id]||!!appliedEntry,isFocus=!!(lastAccredited&&lastAccredited.pgId===pgEntry.id&&String(lastAccredited.meseId)===String(mese.id));if(mode==="pending"&&isDone&&!isFocus)return;if(mode==="done"&&!isDone)return;rendered++;var row=el("div","mese-row"+(isDone?" is-accredited":"")+(isFocus?" is-focus":"")),postsMese=Array.isArray(mese.posts)?mese.posts:[],tipoPg=accreditiCollection==="accrediti_adulti"?"adulto":"studente",postValidi=validPostCount(postsMese),g=totaleG(tipoPg,postsMese,mese),pp=totalePP(postsMese,mese),info=el("div","mese-info");info.appendChild(el("div","mese-title",(mese.nome||"(mese senza nome)")+" — "+postValidi+" Post — "+g+" G — "+pp+" PP"));
         var bonuses=narratorAllBonuses(mese);for(var bi=0;bi<bonuses.length;bi++){var b=bonuses[bi],count=narratorBonusCount(postsMese,b),parts=[];if(b.pp>0)parts.push("+"+b.pp+" PP/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.galeoni>0)parts.push("+"+b.galeoni+" G/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.altro)parts.push(b.altro);if(b.modalita==="first")parts.push(count+"/"+postValidi+" Post con bonus · primi "+b.primiPost);else if(b.modalita==="all")parts.push(count+"/"+postValidi+" Post con bonus");else if(b.maxUtilizzi>0)parts.push("utilizzi "+narratorBonusCurrentUses(postsMese,b)+"/"+b.maxUtilizzi);else parts.push("utilizzi "+count);info.appendChild(el("div","cb-notes","<b>Bonus:</b> "+narratorBonusName(b,bi)+" — "+parts.join(" · ")));}
         var noteParts=[];for(var n=0;n<postsMese.length;n++){var nt=String(postsMese[n]&&postsMese[n].nota||"").trim();if(nt)noteParts.push("Post "+(n+1)+": "+nt);}if(noteParts.length)info.appendChild(el("div","cb-notes","<b>Note:</b> "+noteParts.join(" · ")));var bag=narratorBagWarnings(mese,postsMese);for(var bw=0;bw<bag.length;bw++)info.appendChild(el("div",bag[bw].kind==="remove"?"bag-remove-warning":"bag-update-warning",bag[bw].text));row.appendChild(info);
-        var chk=el("div","chk-line");if(isImportedStudentMonth(mese)){chk.appendChild(el("span","small-note","📦 Storico importato"));}else{var box=el("input");box.type="checkbox";box.checked=isDone;var status=el("span",isDone?"status-ok":"status-pending",isDone?"Accreditato":"Da accreditare");if(!isDone){var due=[g+" G",pp+" PP"],alt=allBonusAltro(mese,postsMese);if(alt)due.push("Altro: "+alt);info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+due.join(" · ")));}box.addEventListener(EV,function(){var nuovo=box.checked,currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;box.disabled=true;if(nuovo&&box._staffApply){promise=box._staffApply(true);}else if(!nuovo&&stored&&stored.applied!==false){var currentStaff=normalizeStaffValues(tipoPg,(accreditiData._staffState&&accreditiData._staffState.values)||{}),afterStaff=normalizeStaffValues(tipoPg,stored.after||{}),hasExternal=stableJson(currentStaff)!==stableJson(afterStaff),opts=null;if(hasExternal){var projected=preservedValuesAfterRevoke(tipoPg,stored,currentStaff),extLines=revokeExternalSummary(tipoPg,stored,currentStaff,projected),bounds=revokeBoundWarnings(tipoPg,stored,currentStaff),msg="Sono presenti variazioni successive all’accredito di "+(stored.monthName||mese.nome)+".\n\nLa revoca manterrà queste variazioni e rimuoverà soltanto l’effetto dell’accredito."+(extLines.length?"\n\n"+extLines.join("\n"):"")+(bounds.length?"\n\nATTENZIONE: "+bounds.join(", ")+" ha/hanno toccato un limite minimo o massimo. Verifica il risultato con la Scheda PG dopo la revoca.":"");if(!confirm(msg)){box.checked=true;box.disabled=false;return;}opts={preserveExternal:true,expectedCurrentValues:currentStaff,nextValues:projected};}promise=window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,currentEntry.key,stored.meseId?String(stored.meseId):"",opts);}else{promise=window.fbSetAccredito(accreditiCollection,pgEntry.id,String(mese.id),nuovo,pgEntry.data&&pgEntry.data._dbRevision,mese);}Promise.resolve(promise).then(function(res){if(res&&res.ok){lastAccredited=nuovo?{pgId:pgEntry.id,meseId:mese.id}:null;if(nuovo){meseRiepilogoSelezionato=canonicalMonthLabel(mese.nome);promoteGeneratedSheet(pgEntry.id,tipoPg,mese.id);}else{var lst=localSheetCodes[String(pgEntry.id||"")];if(lst){lst.parsed=null;lst.generated=null;}}openOnlyPg(pgEntry.id);pgActiveTabs[pgEntry.id]="credit";clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{box.checked=!nuovo;box.disabled=false;alert(applyErrorMessage(res&&res.code));}});});chk.appendChild(box);chk.appendChild(status);row.appendChild(chk);appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,g,pp,box,status);}
+        var chk=el("div","chk-line");if(isImportedStudentMonth(mese)){chk.appendChild(el("span","small-note","📦 Storico importato"));}else{var box=el("input");box.type="checkbox";box.checked=isDone;var status=el("span",isDone?"status-ok":"status-pending",isDone?"Accreditato":"Da accreditare");if(!isDone){var due=[g+" G",pp+" PP"],alt=allBonusAltro(mese,postsMese);if(alt)due.push("Altro: "+alt);info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+due.join(" · ")));}box.addEventListener(EV,function(){var nuovo=box.checked,currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;box.disabled=true;if(nuovo&&box._staffApply){promise=box._staffApply(true);}else if(!nuovo&&stored&&stored.applied!==false){var currentStaff=normalizeStaffValues(tipoPg,(accreditiData._staffState&&accreditiData._staffState.values)||{}),afterStaff=normalizeStaffValues(tipoPg,stored.after||{}),hasExternal=stableJson(currentStaff)!==stableJson(afterStaff),opts=null;if(hasExternal){var projected=preservedValuesAfterRevoke(tipoPg,stored,currentStaff),extLines=revokeExternalSummary(tipoPg,stored,currentStaff,projected),bounds=revokeBoundWarnings(tipoPg,stored,currentStaff),msg="Sono presenti variazioni successive all’accredito di "+(stored.monthName||mese.nome)+".\n\nLa revoca manterrà queste variazioni e rimuoverà soltanto l’effetto dell’accredito."+(extLines.length?"\n\n"+extLines.join("\n"):"")+(bounds.length?"\n\nATTENZIONE: "+bounds.join(", ")+" ha/hanno toccato un limite minimo o massimo. Verifica il risultato con la Scheda PG dopo la revoca.":"");if(!confirm(msg)){box.checked=true;box.disabled=false;return;}opts={preserveExternal:true,expectedCurrentValues:currentStaff,nextValues:projected};}promise=window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,currentEntry.key,stored.meseId?String(stored.meseId):"",opts);}else{promise=window.fbSetAccredito(accreditiCollection,pgEntry.id,String(mese.id),nuovo,pgEntry.data&&pgEntry.data._dbRevision,mese);}Promise.resolve(promise).then(function(res){if(res&&res.ok){lastAccredited=null;
+              if(nuovo){meseRiepilogoSelezionato=canonicalMonthLabel(mese.nome);promoteGeneratedSheet(pgEntry.id,tipoPg,mese.id);}
+              else{var lst=localSheetCodes[String(pgEntry.id||"")];if(lst){lst.parsed=null;lst.generated=null;}}
+              openOnlyPg(nuovo?null:pgEntry.id);
+              pgActiveTabs[pgEntry.id]="credit";
+              operationNotice=nuovo?("✓ "+pgEntry.id+" — "+mese.nome+" accreditato. Puoi aprire il PG successivo."):("✓ Accredito di "+pgEntry.id+" revocato.");
+              clearAccreditiCache(accreditiCollection,pgEntry.id);
+              /* L'accredito modifica il solo documento accrediti: non serve
+                 riscaricare tutte le schede PG. Il nuovo stato si leggerà al bisogno. */
+              renderApp();
+            }else{box.checked=!nuovo;box.disabled=false;alert(applyErrorMessage(res&&res.code));}}
+          ).catch(function(e){console.error(e);box.checked=!nuovo;box.disabled=false;alert("Operazione interrotta. Controlla lo Storico prima di riprovare, per evitare un doppio accredito.");});});chk.appendChild(box);chk.appendChild(status);row.appendChild(chk);appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,g,pp,box,status);}
         panels.credit.appendChild(row);})(ordered[m]);if(!rendered)panels.credit.appendChild(el("p","small-note",mode==="pending"?"✓ Nessun Mese da accreditare.":"Nessun Mese in questa vista."));
-      appendPlayerDataEditor(panels.player,pgEntry,accreditiCollection,accreditiData);panels.manage.innerHTML="";appendLastModification(panels.manage,pgEntry.data);var dup=duplicateMonthNameCount(mesi);if(dup)panels.manage.appendChild(el("div","warning-alert","⚠ "+dup+" Mese/i con nome duplicato."));var dg=duplicateGlobalNumbersInData(pgEntry.data);if(dg.length)panels.manage.appendChild(el("div","warning-alert","⚠ Numeri globali duplicati: <b>"+dg.join(", ")+"</b>."));var manage=el("div","pg-manage"),archive=el("button","action small archive","Archivia PG"),del=el("button","action danger small","Elimina PG");archive.addEventListener(EV,function(){if(!confirm("Archiviare "+pgEntry.id+"?"))return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";archive.disabled=true;window.fbSetArchived(pc,pgEntry.id,true).then(function(ok){if(ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{archive.disabled=false;alert("Operazione non riuscita.");}});});del.addEventListener(EV,function(){var typed=prompt("Scrivi esattamente il nome del PG per eliminarlo definitivamente:\n"+pgEntry.id);if(typed!==pgEntry.id)return;var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";del.disabled=true;window.fbDeletePg(pc,accreditiCollection,pgEntry.id).then(function(res){if(res&&res.ok){clearAccreditiCache(accreditiCollection,pgEntry.id);caricaTutto(function(){renderApp();});}else{del.disabled=false;alert("Eliminazione non riuscita.");}});});manage.appendChild(archive);manage.appendChild(del);appendArchiveUnlockButton(manage,pgEntry,accreditiCollection);panels.manage.appendChild(manage);appendPeriodicArchiveTools(panels.manage,pgEntry,accreditiCollection,accreditiData);appendHistoryTools(panels.manage,pgEntry,accreditiCollection);
+      activeAccData=accreditiData;
+      nonCreditBuilt={};
+      panels.player.innerHTML="";
+      panels.manage.innerHTML="";
+      ensureNonCreditTab(pgActiveTabs[pgEntry.id]||"credit");
     }
-    if(accreditiCache[cacheKey])renderWithAcc(accreditiCache[cacheKey]);else{panels.credit.appendChild(el("p","small-note","Caricamento accrediti…"));loadAccreditiCached(accreditiCollection,pgEntry.id).then(renderWithAcc).catch(function(e){console.error(e);panels.credit.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti."));});}
+    if(accreditiCache[cacheKey])renderWithAcc(accreditiCache[cacheKey]);else{panels.credit.appendChild(el("p","small-note","Caricamento accrediti…"));loadAccreditiCached(accreditiCollection,pgEntry.id).then(function(data){if(card.isConnected)renderWithAcc(data);}).catch(function(e){console.error(e);if(card.isConnected)panels.credit.appendChild(el("p","archive-blocked","Impossibile caricare gli accrediti."));});}
     return card;
   }
 
