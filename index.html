@@ -1,3 +1,5 @@
+<!-- v93 — 03/11/2026: recupero ST compatibile con debito PP, Scheda storica generata senza campi vuoti, storico ST incorporato nella Scheda cumulativa dei nuovi mesi e confermato atomicamente. -->
+<!-- v92 — 03/11/2026: Schede Valori cumulative per più mesi da accreditare; conferma atomica degli accrediti sottostanti. Mantiene ST v91. -->
 <!-- v91 — 03/11/2026: riscatti Staff Token (+1 PP) letti da staff_token_usi per il PG aperto; audit storico e recupero guidato idempotente. Mantiene v90. -->
 <!-- v90 — Copia codice Scheda affidabile anche in iframe con Clipboard API bloccata: fallback sincrono, selezione manuale e feedback; nessuno scroll automatico. 03/11/2026 -->
 <!-- v89 — Ottimizzazione e fix: lettura lazy PG/Registro, chiusura dopo accredito, parser Prestigio e controllo generazione Scheda; meno ricaricamenti Firebase. 03/11/2026 -->
@@ -533,6 +535,76 @@
       var changes=[],keys=Object.keys(record.after||{});for(var i=0;i<keys.length;i++){var k=keys[i];changes.push({path:"valoriStaff."+k,before:record.before?record.before[k]:null,after:record.after[k]});}
       tx.set(auditRef,narratorEvent(pgId,"Accrediti e Parametri Sociali","Accreditato "+record.monthName+" ("+record.postCount+" post): valori correnti aggiornati",changes));
     }).then(function(){return {ok:true};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
+  };
+
+  /* v92 — Accredito cumulativo. La Scheda finale può comprendere più mesi,
+     ma ciascun mese è conservato separatamente nello storico, nella sequenza e
+     nel flag dell'Elfo. Nessuna scrittura avviene durante la sola anteprima. */
+  window.fbApplyStaffMonthsCumulative=function(collectionName,pgId,steps,expectedValues,expectedPgRevision,historical){
+    if(!fbAuth.currentUser||fbAuth.currentUser.uid!==NARRATOR_UID)return Promise.resolve({ok:false,code:"unauthorized"});
+    if(!Array.isArray(steps)||steps.length<1)return Promise.resolve({ok:false,code:"invalid-months"});
+    var ref=doc(fbDb,collectionName,pgId),pc=personCollectionForAccrediti(collectionName),pgRef=doc(fbDb,pc,pgId),auditRef=doc(collection(fbDb,pc,pgId,"audit"));
+    return runTransaction(fbDb,async function(tx){
+      var snap=await tx.get(ref),pgSnap=await tx.get(pgRef);
+      if(!pgSnap.exists()||pgSnap.data()._deleted)throw new Error("deleted-pg");
+      var cur=snap.exists()?snap.data():{},pgData=pgSnap.data(),remoteRevision=Math.max(0,parseInt(pgData._dbRevision,10)||0),expectedRevision=Math.max(0,parseInt(expectedPgRevision,10)||0);
+      if(remoteRevision!==expectedRevision)throw new Error("stale-pg");
+      var pgMonths=Array.isArray(pgData.MESI)?pgData.MESI:[],state=cur._staffState||{},months=Object.assign({},cur._staffMonths||{}),seq=Array.isArray(cur._staffSequence)?cur._staffSequence.slice():[];
+      var tipo=collectionName==="accrediti_adulti"?"adulto":"studente",base=txNormalizeStaffValues(tipo,expectedValues||{}),first=txNormalizeStaffValues(tipo,steps[0].record&&steps[0].record.before||{});
+      if(!historical&&stableJson(first)!==stableJson(base))throw new Error("stale-values");
+      if(historical&&stableJson(first)!==stableJson(Object.assign({},base,{pp:Number(historical.afterPP)})))throw new Error("stale-values");
+      var patch={},seen={},lastOrder=Number(state.lastMonthOrder),priorAfter=base,labels=[],histSum=0,histDetails=[];
+      if(historical){
+        var histItems=historical.items||[],used=new Set(),staffKind=collectionName==="accrediti_adulti"?"adulti":"studenti";
+        if(!Array.isArray(histItems)||!histItems.length||!Number.isInteger(Number(historical.count))||Number(historical.count)<=0)throw new Error("invalid-recovery");
+        var actualStored=Number(state.values&&state.values.pp);
+        if(!Number.isFinite(actualStored)||Math.abs(actualStored-Number(base.pp))>.001)throw new Error("stale-values");
+        for(var hi=0;hi<histItems.length;hi++){
+          var item=histItems[hi]||{},hk=String(item.key||""),old=months[hk],delta=Number(item.delta),hids=item.usageIds||[];
+          if(!old||old.applied===false||!hk||!Number.isInteger(delta)||delta<=0||!Array.isArray(hids)||!hids.length)throw new Error("invalid-recovery");
+          var prior=Number(old.staffTokenRecoveredPP)||0,included=Number(old.staffTokenPP)||0;
+          if(prior!==Number(item.expectedRecoveredPP||0)||delta>hids.length-included-prior)throw new Error("already-recovered");
+          for(var hj=0;hj<hids.length;hj++){
+            var hid=String(hids[hj]||"");if(!hid||used.has(hid))throw new Error("duplicate-usage");used.add(hid);
+            var snapUsage=await tx.get(doc(fbDb,"staff_token_usi",hid));
+            if(!snapUsage.exists())throw new Error("usage-changed");
+            var use=snapUsage.data()||{};
+            if(use.active!==true||String(use.pgId||"")!==String(pgId)||String(use.pgKind||"")!==staffKind||String(use.monthId||"")!==String(old.meseId||""))throw new Error("usage-changed");
+          }
+          patch[hk]={staffTokenRecoveredPP:prior+delta,staffTokenRecoveryAt:serverTimestamp()};
+          months[hk]=Object.assign({},old,patch[hk]);histSum+=delta;histDetails.push(old.monthName||hk);
+        }
+        if(histSum!==Number(historical.count)||Math.abs(Number(historical.afterPP)-(Number(base.pp)+histSum))>.001)throw new Error("invalid-recovery");
+        priorAfter=Object.assign({},base,{pp:Number(base.pp)+histSum});
+      }
+      for(var si=0;si<steps.length;si++){
+        var item=steps[si]||{},r=item.record||{},mid=String(item.meseId||""),rk=String(item.recordKey||""),order=Number(r.monthOrder);
+        if(!mid||!rk||seen[rk]||!Number.isFinite(order)||order<0)throw new Error("invalid-months");
+        seen[rk]=true;
+        var liveMonth=null;for(var mi=0;mi<pgMonths.length;mi++){if(String(pgMonths[mi]&&pgMonths[mi].id)===mid){liveMonth=pgMonths[mi];break;}}
+        if(!liveMonth||stableJson(liveMonth)!==stableJson(item.expectedMonthData||{}))throw new Error("stale-pg");
+        if(months[rk]&&months[rk].applied!==false)throw new Error("already-applied");
+        var mk=Object.keys(months);for(var j=0;j<mk.length;j++){
+          var other=months[mk[j]];
+          if(mk[j]!==rk&&other&&other.applied!==false&&String(other.monthNorm||"")===String(r.monthNorm||""))throw new Error("same-month-applied");
+        }
+        if(Number.isFinite(lastOrder)&&lastOrder>=0&&order<lastOrder)throw new Error("out-of-order");
+        var rbefore=txNormalizeStaffValues(tipo,r.before||{});
+        if(stableJson(rbefore)!==stableJson(priorAfter))throw new Error("stale-values");
+        var after=txNormalizeStaffValues(tipo,r.after||{});
+        var saved=Object.assign({},r,{applied:true,appliedAt:serverTimestamp(),pgRevisionAtApply:remoteRevision});
+        months[rk]=saved;patch[rk]=saved;seq.push(rk);labels.push(String(r.monthName||mid));priorAfter=after;lastOrder=order;
+      }
+      var finalRec=steps[steps.length-1].record;
+      var nextState=Object.assign({},state,{tipo:tipo,values:finalRec.after,lastMonthKey:steps[steps.length-1].recordKey,lastMonthName:finalRec.monthName,lastMonthOrder:finalRec.monthOrder,updatedAt:serverTimestamp()});
+      var update={_staffState:nextState,_staffMonths:patch,_staffSequence:seq,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:"Accreditati cumulativamente "+labels.join(", ")};
+      for(var ui=0;ui<steps.length;ui++)update[String(steps[ui].meseId)]=true;
+      tx.set(ref,update,{merge:true});
+      var changes=[];Object.keys(priorAfter).forEach(function(k){if(stableJson(base[k])!==stableJson(priorAfter[k]))changes.push({path:"valoriStaff."+k,before:base[k],after:priorAfter[k]});});
+      steps.forEach(function(item){changes.push({path:"accreditiMensili."+item.recordKey,before:null,after:item.record.monthName});});
+      if(histSum){changes.push({path:"staffTokenRecovery",before:null,after:{pp:histSum,months:histDetails}});}
+      tx.set(auditRef,narratorEvent(pgId,"Accrediti e Parametri Sociali","Accredito cumulativo di "+labels.join(", ")+" ("+steps.length+" mesi)"+(histSum?" · recuperati +"+histSum+" PP ST storici":""),changes));
+    }).then(function(){return {ok:true,creditedMonths:steps.length};}).catch(function(e){console.error(e);return {ok:false,code:e&&e.message?e.message:"error"};});
   };
 
   function txOptionalStaffNum(v){if(v===null||v===undefined||String(v).trim()==="")return null;var n=Number(String(v).replace(",","."));return Number.isFinite(n)?n:null;}
@@ -1215,6 +1287,13 @@
      In Firebase vengono salvati, come già avveniva, esclusivamente i valori numerici correnti. */
   var localSheetCodes = {};
   function localSheetState(pgId){var k=String(pgId||"");if(!localSheetCodes[k])localSheetCodes[k]={raw:"",parsed:null,generated:null};return localSheetCodes[k];}
+
+  /* v92: le variazioni extra appartengono al singolo mese e rimangono in
+     memoria mentre si passa da un'anteprima cumulativa all'altra. */
+  var monthExtraDrafts={},monthPreviewRefreshByPg={},monthCumulativeCacheByPg={},staffHistoricalRecoveryByPg={};
+  function monthDraftFor(pgId,meseId){var p=String(pgId||""),k=String(meseId||"");return monthExtraDrafts[p]&&monthExtraDrafts[p][k]||{};}
+  function saveMonthDraft(pgId,meseId,raw){var p=String(pgId||""),k=String(meseId||"");if(!monthExtraDrafts[p])monthExtraDrafts[p]={};monthExtraDrafts[p][k]=Object.assign({},raw||{});}
+  function refreshCumulativePreviews(pgId){var arr=monthPreviewRefreshByPg[String(pgId||"")]||[];for(var i=0;i<arr.length;i++)if(typeof arr[i]==="function")arr[i]();}
 
   function sanitizeHtml(html){
     var template=document.createElement("template"); template.innerHTML=String(html==null?"":html);
@@ -2529,7 +2608,7 @@
   function readInputsByDefs(defs,inputs){var o={};for(var i=0;i<defs.length;i++)o[defs[i].key]=optionalNum(inputs[defs[i].key]&&inputs[defs[i].key].value);return o;}
   function makeExtraInputs(tipo){var defs=staffFieldDefs(tipo),wrap=el("div","staff-grid"),inputs={};for(var i=0;i<defs.length;i++){var d=defs[i],cell=el("div"),lab=el("label",null,(d.kind==="resource"?"Extra ":"Variazione extra ")+d.label+" (+/−)");var inp=createNumberInput({step:d.step},0);inputs[d.key]=inp;cell.appendChild(lab);cell.appendChild(inp);wrap.appendChild(cell);}return {wrap:wrap,inputs:inputs};}
   function renderCalcPreview(holder,tipo,record){holder.innerHTML="";var socialMsg="Post validi: <b>"+record.postCount+"</b> · Parametri Sociali: <b>"+fmtSigned(record.decay)+"</b>";if(tipo==="adulto"&&optionalNum(record.before&&record.before.prestigio)!==null){var pa=Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,record.before&&record.before.prestigio);socialMsg+=" · Prestigio da attività: <b>"+fmtSigned(pa)+"</b>";}holder.appendChild(el("span","calc-line",socialMsg));if(prestigeThresholdReached(record)){holder.appendChild(el("span","calc-line","<b>Soglia massima Prestigio raggiunta</b>: il bonus mensile automatico viene limitato al valore massimo 71. Eventuali aumenti per meriti ONGame vanno inseriti manualmente come variazione extra."));}holder.appendChild(el("span","calc-line","Guadagno automatico: <b>+"+fmtStaffNum(record.earnedG)+" Galeoni</b>"+(record.earnedPP?" · <b>+"+fmtStaffNum(record.earnedPP)+" Punti Post</b>":"")));if(record.staffTokenPP){holder.appendChild(el("span","st-month-note","✓ Staff Token riscattati e verificati: <b>+"+record.staffTokenPP+" PP</b> (già compresi nel totale)."));}var defs=staffFieldDefs(tipo);for(var i=0;i<defs.length;i++){var d=defs[i],b=optionalNum(record.before[d.key]),a=optionalNum(record.after[d.key]);if(b===null||a===null)continue;var debt=recordDebtSettlement(record,d.key);if(debt){holder.appendChild(el("span","calc-line",registryDisplayLabel(d.key,d.label)+": <b>"+changeFormula(record,d.key)+"</b> · <b>Debito estinto!</b>"));continue;}var automatic=(d.kind==="social"?(tipo==="adulto"&&d.key==="prestigio"?(Number.isFinite(Number(record.prestigeActivity))?Number(record.prestigeActivity):monthlyPrestigeActivity(record.postCount,b)):record.decay):(d.key==="galeoni"?record.earnedG:(d.key==="pp"?record.earnedPP:0))),extra=optionalNum(record.extra[d.key])||0,net=recordNet(record,d.key),detail=(d.kind==="social"?fmtSigned(automatic)+" automatico da post":fmtSigned(automatic))+(extra?" "+fmtSigned(extra)+" extra":"");if(Math.abs(net-(automatic+extra))>.00001)detail+=" · netto "+fmtSigned(net)+" dopo il limite";holder.appendChild(el("span","calc-line",registryDisplayLabel(d.key,d.label)+": <b>"+fmtStaffNum(b)+" → "+fmtStaffNum(a)+"</b> ("+detail+")"));}}
-  function applyErrorMessage(code){if(code==="rename-target-exists")return "Il nuovo nome è già utilizzato o possiede già dati collegati: scegli un altro nome oppure controlla prima il database.";if(code==="invalid-name")return "Nome non valido. Inserisci un nome non vuoto, senza / e non più lungo di 160 caratteri.";if(code==="same-name")return "Il nuovo nome coincide con quello attuale.";if(code==="rename-rules-required")return "La rinomina è stata annullata senza perdere dati: le Rules Firebase devono prima consentire al Narratore di migrare i riferimenti Medimagia/Staff Token. Pubblica le Rules aggiornate, ricarica il pannello e riprova.";if(code==="rename-cleanup-partial")return "Il nuovo nome è stato creato e i collegamenti sono stati migrati, ma la pulizia finale del vecchio nome non si è completata. Non rinominare di nuovo: ricarica e controlla entrambi i nomi.";if(code==="sheet-not-read")return "Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».";if(code==="sheet-not-generated")return "Prima completa il calcolo e genera il codice Scheda aggiornato per questo mese.";if(code==="stale-values")return "I valori usati per questo calcolo non coincidono più con la base prevista. Rileggi la Scheda Valori e riprova.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Se devi ricostruire lo storico, gestisci prima gli accrediti successivi e poi rileggi la Scheda Valori corretta.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
+  function applyErrorMessage(code){if(code==="rename-target-exists")return "Il nuovo nome è già utilizzato o possiede già dati collegati: scegli un altro nome oppure controlla prima il database.";if(code==="invalid-name")return "Nome non valido. Inserisci un nome non vuoto, senza / e non più lungo di 160 caratteri.";if(code==="same-name")return "Il nuovo nome coincide con quello attuale.";if(code==="rename-rules-required")return "La rinomina è stata annullata senza perdere dati: le Rules Firebase devono prima consentire al Narratore di migrare i riferimenti Medimagia/Staff Token. Pubblica le Rules aggiornate, ricarica il pannello e riprova.";if(code==="rename-cleanup-partial")return "Il nuovo nome è stato creato e i collegamenti sono stati migrati, ma la pulizia finale del vecchio nome non si è completata. Non rinominare di nuovo: ricarica e controlla entrambi i nomi.";if(code==="sheet-not-read")return "Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».";if(code==="sheet-not-generated")return "Prima completa il calcolo e genera il codice Scheda aggiornato per questo mese.";if(code==="stale-values")return "I valori usati per questo calcolo non coincidono più con la base prevista. Rileggi la Scheda Valori e riprova.";if(code==="stale-pg")return "La Camera Blindata del PG è cambiata dopo l’ultimo caricamento del pannello. L’accredito è stato annullato: aggiorna l’elenco e ricontrolla Post, Galeoni e PP prima di riprovare.";if(code==="month-now-exists")return "Nel frattempo il PG ha creato una Camera Blindata per questo mese: l’accredito a 0 Post è stato annullato. Aggiorna il pannello e usa la CB appena creata.";if(code==="already-applied")return "Questo mese risulta già applicato ai valori correnti.";if(code==="invalid-recovery"||code==="already-recovered"||code==="usage-changed"||code==="duplicate-usage")return "I riscatti ST sono cambiati o risultano già recuperati: aggiorna la pagina, verifica lo storico e rigenera la Scheda prima di confermare.";if(code==="same-month-applied")return "Per questo PG esiste già un accredito Staff applicato allo stesso mese.";if(code==="out-of-order")return "Non puoi applicare automaticamente un mese precedente all'ultimo già accreditato. Se devi ricostruire lo storico, gestisci prima gli accrediti successivi e poi rileggi la Scheda Valori corretta.";if(code==="not-last")return "Puoi revocare con ripristino automatico soltanto l'ultimo mese applicato. Revoca prima eventuali mesi successivi.";return "Operazione non riuscita. Ricarica il pannello e riprova.";}
   function appendSheetCodeReader(card,pgEntry,accreditiCollection,accreditiData){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",st=localSheetState(pgEntry.id),wrap=el("div","sheet-code-reader");
     wrap.appendChild(el("h4",null,"📄 Scheda Valori — incolla e calcola"));
@@ -2654,7 +2733,7 @@
     zs.addEventListener("change",refreshZeroPreview);Object.keys(zextra.inputs).forEach(function(k){zextra.inputs[k].addEventListener("input",refreshZeroPreview);});refreshZeroPreview();
     zbtn.addEventListener(EV,function(){
       var entry=zeroAppliedEntry(),existing=entry?entry.record:null,rk=zeroMonthRecordKey(zs.value);if(existing){alert("Questo mese è già accreditato: usa lo Storico accrediti applicati.");return;}
-      var zst=localSheetState(pgEntry.id),tag="zero:"+normalizeMonthName(zs.value);if(!zst.parsed||!zst.parsed.ok){alert("Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».");return;}if(!zst.generated||String(zst.generated.meseId||"")!==tag){alert("Prima genera il codice Scheda aggiornato per questo mese.");return;}
+      var zst=localSheetState(pgEntry.id),tag="zero:"+normalizeMonthName(zs.value);if(!zst.parsed||!zst.parsed.ok){alert("Prima incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».");return;}refreshZeroPreview();if(!zst.generated||String(zst.generated.meseId||"")!==tag){alert("Prima genera il codice Scheda aggiornato per questo mese.");return;}
       var norm=normalizeMonthName(zs.value),mesi=pgEntry.data.MESI||[];for(var zi=0;zi<mesi.length;zi++){if(!isImportedStudentMonth(mesi[zi])&&normalizeMonthName(mesi[zi].nome)===norm){alert("Questo PG possiede già una CB per "+canonicalMonthLabel(zs.value)+": usa il calcolatore nella riga di quel Mese.");return;}}
       var rec=refreshZeroPreview();if(!rec)return;if(!confirm("Confermi di aver già reincollato sul Forum la Scheda Valori aggiornata e di voler accreditare "+pgDisplayName(pgEntry)+" per "+rec.monthName+" con 0 post?"))return;zbtn.disabled=true;var base=normalizeStaffValues(tipo,zst.parsed.values||{});window.fbApplyStaffMonth(accreditiCollection,pgEntry.id,rk,"",rec,base,pgEntry.data&&pgEntry.data._dbRevision,null,true).then(function(res){if(res&&res.ok){promoteGeneratedSheet(pgEntry.id,tipo,tag);clearAccreditiCache(accreditiCollection,pgEntry.id);lastAccredited=null;openOnlyPg(null);operationNotice="✓ "+pgEntry.id+" — "+rec.monthName+" accreditato con 0 post. Puoi aprire il PG successivo.";renderApp();}else{zbtn.disabled=false;alert(applyErrorMessage(res&&res.code));}}).catch(function(e){console.error(e);zbtn.disabled=false;alert("Operazione interrotta. Controlla lo Storico prima di riprovare.");});
     });
@@ -2693,8 +2772,9 @@
     var det=el("details","st-audit"),total=audit.reduce(function(n,a){return n+a.pending;},0);
     det.appendChild(el("summary",null,"🪙 Verifica Staff Token · "+(total?"fino a "+total+" PP storici da controllare":"nessun recupero automatico sospeso")));
     det.appendChild(el("p","small-note","Fonte: riscatti attivi su staff_token_usi. +1 PP per riscatto valido. Il recupero è separato dagli accrediti mensili: non riaccreditare settembre/ottobre e non revocare mesi successivi."));
-    if(!audit.length&&!legacy.length){det.appendChild(el("p","small-note","Non risultano riscatti su mesi già accreditati."));card.appendChild(det);return;}
-    var eligible=[],form=el("div"),inputs=[];
+    if(!audit.length&&!legacy.length){staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;det.appendChild(el("p","small-note","Non risultano riscatti su mesi già accreditati."));card.appendChild(det);return;}
+    staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;
+    var form=el("div"),inputs=[];
     audit.sort(function(a,b){return monthKey(a.mese.nome)-monthKey(b.mese.nome);});
     audit.forEach(function(a){
       var row=el("div","st-audit-row"),base=el("div");base.appendChild(el("b",null,a.mese.nome+": "+a.summary.count+" ST = "+a.summary.count+" PP"));
@@ -2710,25 +2790,34 @@
     legacy.forEach(function(a){form.appendChild(el("div","st-audit-row st-audit-warning",a.mese.nome+": "+a.summary.count+" ST; accredito vecchio formato senza record dei valori. Verifica manualmente: non è sicuro un recupero automatico."));});
     det.appendChild(form);
     if(inputs.length){
-      var actions=el("div","st-recovery-actions"),summary=el("div","small-note"),out=el("div");out.hidden=true;
+      var actions=el("div","st-recovery-actions"),summary=el("div","small-note"),error=el("div","st-audit-warning"),out=el("div");
+      error.style.display="none";out.hidden=true;
+      var codeTitle=el("div","sheet-code-output-title","📋 Scheda Valori aggiornata con i PP storici ST");out.appendChild(codeTitle);
+      var codeHelp=el("div","small-note","Questa Scheda corregge i riscatti ST dei mesi già accreditati. Se hai altri mesi ancora da accreditare, la loro Scheda cumulativa includerà anche questi PP storici.");out.appendChild(codeHelp);
       var codeTa=el("textarea");codeTa.readOnly=true;out.appendChild(codeTa);
-      var copy=el("button","copy-btn","Copia Scheda con PP recuperati");copy.type="button";copy.addEventListener(EV,function(){copyText(codeTa.value,copy,codeTa);});out.appendChild(copy);
+      var copy=el("button","copy-btn","Copia Scheda con PP recuperati");copy.type="button";copy.addEventListener(EV,function(){if(codeTa.value)copyText(codeTa.value,copy,codeTa);});out.appendChild(copy);
       var acknowledge=el("label",null,"Ho verificato gli eventuali PP extra già aggiunti e ho aggiornato la Scheda sul Forum con il codice qui sopra.");var ck=el("input");ck.type="checkbox";ck.style.width="auto";acknowledge.insertBefore(ck,acknowledge.firstChild);out.appendChild(acknowledge);
       var confirmButton=el("button","action small","Conferma recupero PP ST in Firebase");confirmButton.disabled=true;confirmButton.type="button";out.appendChild(confirmButton);
-      var error=el("div","small-note");out.appendChild(error);
       function previewRecovery(){
-        out.hidden=true;confirmButton.disabled=true;ck.checked=false;error.textContent="";
+        out.hidden=true;codeTa.value="";confirmButton.disabled=true;ck.checked=false;error.style.display="none";error.textContent="";
+        staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;
         var items=[],count=0,valid=true;inputs.forEach(function(x){var v=Number(x.inp.value);if(!Number.isInteger(v)||v<0||v>x.a.pending){valid=false;return;}if(v>0){count+=v;items.push({key:x.a.key,delta:v,expectedRecoveredPP:x.a.recovered,usageIds:x.a.summary.usageIds.slice()});}});
         summary.textContent=!valid?"⚠ Inserisci soltanto numeri interi fra 0 e i PP mancanti stimati.":("Recupero richiesto: +"+count+" PP · Gli accrediti mensili restano invariati.");
-        if(!valid||!count)return;
+        if(!valid||!count){refreshCumulativePreviews(pgEntry.id);return;}
+        function fail(msg){error.textContent=msg;error.style.display="block";refreshCumulativePreviews(pgEntry.id);}
         var state=localSheetState(pgEntry.id),stored=accreditiData._staffState&&accreditiData._staffState.values||{},forumPP=state.parsed&&state.parsed.ok?optionalNum(state.parsed.values.pp):null,dbPP=optionalNum(stored.pp);
-        if(forumPP===null){error.textContent="Incolla e leggi prima la Scheda Valori attualmente pubblicata sul Forum, poi riapri questo riepilogo.";out.hidden=false;return;}
-        if(dbPP===null||Math.abs(dbPP-forumPP)>.001){error.textContent="⚠ Il valore PP del Forum ("+fmtStaffNum(forumPP)+") non coincide con quello memorizzato dal Narratore ("+fmtStaffNum(dbPP)+"). Prima riallinea i valori: recupero automatico bloccato per sicurezza.";out.hidden=false;return;}
-        if(state.parsed.debts&&state.parsed.debts.pp){error.textContent="⚠ La Scheda contiene un Debito PP: il recupero richiede un controllo manuale dei debiti.";out.hidden=false;return;}
+        if(forumPP===null){fail("Prima incolla e leggi la Scheda Valori attualmente pubblicata sul Forum; il codice aggiornato comparirà qui automaticamente.");return;}
+        if(dbPP===null||Math.abs(dbPP-forumPP)>.001){fail("⚠ La Scheda del Forum indica "+fmtStaffNum(forumPP)+" PP, ma il Narratore ne registra "+fmtStaffNum(dbPP)+". Non è sicuro generare un recupero da questa base prima di riallineare i dati.");return;}
         var base=normalizeStaffValues(tipo,state.parsed.values||{}),newAfter=Object.assign({},base,{pp:base.pp+count}),synthetic={tipo:tipo,before:base,after:newAfter,extra:{pp:0},earnedPP:count,earnedG:0};
+        applySheetDebtRules(synthetic,state.parsed);
+        if(recordDebtSettlement(synthetic,"pp")){fail("⚠ Il recupero estinguerebbe un Debito PP. Il saldo va controllato prima di procedere perché lo storico ST deve conservare la contabilità corretta.");return;}
         var built=buildUpdatedSheetCode(tipo,state,synthetic);
-        if(!built.ok){error.textContent="⚠ Codice Scheda non generabile in sicurezza: "+(built.missing||built.mismatch||[]).join(", ");out.hidden=false;return;}
+        if(!built.ok){fail("⚠ Impossibile generare la Scheda: "+(built.missing||built.mismatch||built.bagWarnings||[]).join(", ")+". Controlla il codice incollato.");return;}
         codeTa.value=built.code;out.hidden=false;
+        var debt=state.parsed.debts&&state.parsed.debts.pp;
+        codeHelp.textContent="Punti Post: "+fmtStaffNum(base.pp)+" → "+fmtStaffNum(synthetic.after.pp)+" (+"+count+" PP da ST storici)."+(debt?" Il Debito Punti Post di "+fmtStaffNum(debt.value)+" rimane invariato perché non è stato ancora estinto.":"")+" Per sommarli anche ai mesi ancora aperti, copia invece la Scheda cumulativa del mese più recente.";
+        var plan={items:items,count:count,afterPP:synthetic.after.pp,code:built.code};
+        staffHistoricalRecoveryByPg[String(pgEntry.id)]=plan;
         var snapshot=JSON.stringify(items),expectedPP=forumPP;
         confirmButton.onclick=function(){
           if(!ck.checked||confirmButton.disabled)return;
@@ -2738,46 +2827,132 @@
           window.fbRecoverHistoricalStaffTokenPP(collectionName,pgEntry.id,items,expectedPP,pgEntry.data&&pgEntry.data._dbRevision).then(function(res){
             if(res&&res.ok){
               var sheet=localSheetState(pgEntry.id);sheet.raw=built.code;sheet.parsed=parseSheetCode(tipo,built.code);sheet.generated=null;
+              staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;
               operationNotice="✓ "+pgEntry.id+": recuperati +"+res.sum+" PP da Staff Token senza duplicare gli accrediti mensili.";
               clearAccreditiCache(collectionName,pgEntry.id);refreshStaffTokenUsageCache(pgEntry.id,tipo).then(function(){openOnlyPg(pgEntry.id);renderApp();}).catch(function(){openOnlyPg(pgEntry.id);renderApp();});
-            }
-            else{error.textContent="⚠ Recupero non eseguito: "+String(res&&res.code||"errore")+". Controlla lo Storico prima di riprovare.";ck.checked=false;}
-          }).catch(function(e){error.textContent="⚠ Recupero interrotto: "+String(e&&e.message||e);});
+            }else{error.textContent="⚠ Recupero non eseguito: "+String(res&&res.code||"errore")+". Controlla lo Storico prima di riprovare.";error.style.display="block";ck.checked=false;}
+          }).catch(function(e){error.textContent="⚠ Recupero interrotto: "+String(e&&e.message||e);error.style.display="block";});
         };
         confirmButton.disabled=!ck.checked;
+        refreshCumulativePreviews(pgEntry.id);
       }
-      ck.addEventListener("change",function(){confirmButton.disabled=!ck.checked||out.hidden||!codeTa.value||!!error.textContent;});
+      ck.addEventListener("change",function(){confirmButton.disabled=!ck.checked||out.hidden||!codeTa.value||error.style.display!=="none";});
       inputs.forEach(function(x){x.inp.addEventListener("input",previewRecovery);});
-      actions.appendChild(summary);actions.appendChild(out);det.appendChild(actions);previewRecovery();
+      actions.appendChild(summary);actions.appendChild(error);actions.appendChild(out);det.appendChild(actions);previewRecovery();
     }
     card.appendChild(det);
   }
 
+  /* v92: ogni risultato proietta TUTTI i mesi precedenti ancora da accreditare.
+     L'aggiornamento del Bagaglio e l'eventuale estinzione dei debiti vengono
+     applicati cronologicamente al codice, non soltanto ai numeri della Scheda. */
+  function projectPendingMonths(pgEntry,collectionName,accreditiData,tipo,targetMonth){
+    var live=localSheetState(pgEntry.id),base=live.parsed,pgId=String(pgEntry.id||""),historic=staffHistoricalRecoveryByPg[pgId]||null,draftSignature=JSON.stringify([monthExtraDrafts[pgId]||{},historic&&historic.items||[]]),memo=monthCumulativeCacheByPg[pgId];
+    if(!memo||memo.parsed!==base||memo.raw!==live.raw||memo.accrediti!==accreditiData||memo.draftSignature!==draftSignature){
+      memo={parsed:base,raw:live.raw,accrediti:accreditiData,draftSignature:draftSignature,byMonth:{}};
+      monthCumulativeCacheByPg[pgId]=memo;
+    }
+    var targetId=String(targetMonth&&targetMonth.id||"");
+    if(Object.prototype.hasOwnProperty.call(memo.byMonth,targetId))return memo.byMonth[targetId];
+    if(!base||!base.ok)return {ok:false,message:"Incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli»."};
+    var rdy=staffValuesReady(tipo,base.values||{});if(!rdy.ok)return {ok:false,message:"Nella Scheda mancano: "+rdy.missing.join(", ")+"."};
+    var upto=monthKey(targetMonth&&targetMonth.nome);
+    if(upto<0)return {ok:false,message:"Nome del mese non riconosciuto: impossibile determinare l'ordine cronologico."};
+    var state=accreditiData&&accreditiData._staffState||{},lastOrder=Number(state.lastMonthOrder);
+    if(Number.isFinite(lastOrder)&&lastOrder>=0&&upto<lastOrder)return {ok:false,message:"Un mese più recente risulta già accreditato. Non è possibile inserire mesi precedenti automaticamente."};
+    var all=Array.isArray(pgEntry.data&&pgEntry.data.MESI)?pgEntry.data.MESI:[],pending=[];
+    for(var mi=0;mi<all.length;mi++){
+      var m=all[mi],order=monthKey(m&&m.nome);if(!m||isImportedStudentMonth(m)||order<0||order>upto)continue;
+      if(accreditiData[m.id]||findAppliedRecordEntryForMonth(accreditiData,m,normalizeMonthName(m.nome)))continue;
+      if(Number.isFinite(lastOrder)&&lastOrder>=0&&order<lastOrder)return {ok:false,message:"È presente un mese non accreditato precedente a un accredito già confermato. Controlla lo Storico."};
+      pending.push(m);
+    }
+    pending.sort(function(a,b){return monthKey(a.nome)-monthKey(b.nome)||String(a.id).localeCompare(String(b.id));});
+    if(!pending.length||String(pending[pending.length-1].id)!==String(targetMonth.id))return {ok:false,message:"Il mese selezionato non è più da accreditare o presenta un ordine ambiguo."};
+    var stateCode={raw:historic?historic.code:live.raw,parsed:historic?parseSheetCode(tipo,historic.code):live.parsed},values=normalizeStaffValues(tipo,stateCode.parsed.values||{}),steps=[],bagApplied=[],sumG=0,sumPP=0;
+    if(!stateCode.parsed.ok)return {ok:false,message:"La Scheda corretta con ST storici non è rileggibile. Controlla il recupero ST."};
+    for(var i=0;i<pending.length;i++){
+      var month=pending[i],posts=Array.isArray(month.posts)?month.posts:[],g=totaleG(tipo,posts,month),pp=totalePP(posts,month,pgEntry.id,tipo),ex=normalizeStaffExtras(tipo,monthDraftFor(pgEntry.id,month.id));
+      var rec=applySheetDebtRules(computeStaffMonth(tipo,validPostCount(posts),g,pp,values,ex,month.nome,"tracker",month.id),stateCode.parsed);
+      var stSummary=staffTokenMonthSummary(posts,month,pgEntry.id,tipo);rec.staffTokenPP=stSummary.count;rec.staffTokenUsageIds=stSummary.usageIds.slice();
+      var built=buildUpdatedSheetCode(tipo,stateCode,rec,month,posts);
+      if(!built.ok){var why=(built.mismatch&&built.mismatch.length)?("Controllo campi: "+built.mismatch.join(", ")):(built.bagWarnings&&built.bagWarnings.length)?("Bagaglio: "+built.bagWarnings.join(" · ")):(built.missing&&built.missing.length)?("Campi mancanti: "+built.missing.join(", ")):"Errore nella generazione della Scheda";return {ok:false,message:"Calcolo interrotto a "+canonicalMonthLabel(month.nome)+". "+why+".",failedMonth:month.nome};}
+      if(built.bagApplied&&built.bagApplied.length)bagApplied.push.apply(bagApplied,built.bagApplied);
+      steps.push({recordKey:monthRecordKey(month),meseId:String(month.id),expectedMonthData:month,record:rec});
+      values=normalizeStaffValues(tipo,rec.after);sumG+=g;sumPP+=pp;
+      stateCode={raw:built.code,parsed:parseSheetCode(tipo,built.code)};
+      if(!stateCode.parsed.ok)return {ok:false,message:"La Scheda aggiornata di "+canonicalMonthLabel(month.nome)+" non è leggibile in modo sicuro."};
+      /* Salva ogni prefisso: l'anteprima di ottobre prepara anche quelle di
+         agosto e settembre, evitando di rielaborare il lungo codice più volte. */
+      memo.byMonth[String(month.id)]={ok:true,steps:steps.slice(),code:stateCode.raw,base:normalizeStaffValues(tipo,base.values||{}),after:values,historical:historic?{items:historic.items,count:historic.count,afterPP:historic.afterPP}:null,bagApplied:bagApplied.slice(),totalG:sumG,totalPP:sumPP};
+    }
+    return memo.byMonth[targetId];
+  }
+  function cumulativeSheetChanges(tipo,projection){
+    var defs=staffFieldDefs(tipo),result=[];
+    for(var i=0;i<defs.length;i++){
+      var d=defs[i],b=optionalNum(projection.base[d.key]),a=optionalNum(projection.after[d.key]);
+      if(b===null||a===null||Math.abs(a-b)<.00001)continue;
+      result.push(registryDisplayLabel(d.key,d.label)+": "+fmtStaffNum(b)+" → "+fmtStaffNum(a)+" ("+fmtSigned(a-b)+")");
+    }
+    return result;
+  }
+
   function appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,gMese,ppMese,box,statusLbl){
-    var rk=monthRecordKey(mese),appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,st=localSheetState(pgEntry.id),parsed=st.parsed,ready=!!(parsed&&parsed.ok&&staffValuesReady(tipoPg,parsed.values||{}).ok),calc=el("details","month-calc");calc.appendChild(el("summary",null,tracked?"🧮 Variazioni già applicate":"🧮 Dettaglio del calcolo"));
+    var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,calc=el("details","month-calc");
+    calc.appendChild(el("summary",null,tracked?"🧮 Variazioni già applicate":"🧮 Dettaglio del calcolo mensile"));
     if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);calc.appendChild(el("p","small-note","Accredito già registrato. I valori mostrati sono quelli applicati in quel momento."));row.appendChild(calc);return;}
     if(accreditiData[mese.id]){calc.appendChild(el("p","legacy-credit","Accredito storico: i valori correnti non vengono ricalcolati retroattivamente."));row.appendChild(calc);return;}
-    var sheetBox=el("div","sheet-values-callout sheet-values-pending"),sheetTitle=el("div","sheet-values-title","✍ Risultato da riportare nella Scheda"),sheetList=el("div","sheet-values-list","");sheetBox.appendChild(sheetTitle);sheetBox.appendChild(sheetList);sheetBox.appendChild(el("div","sheet-values-help","Copia il codice Scheda aggiornato qui sotto e reincollalo sul Forum. Soltanto dopo spunta «Accreditato»."));row.appendChild(sheetBox);
-    var codeOut=el("div","sheet-code-output");codeOut.style.display="none";codeOut.appendChild(el("div","sheet-code-output-title","📋 Codice Scheda Valori aggiornato"));codeOut.appendChild(el("div","sheet-code-output-help","È lo stesso codice che hai incollato: il Tool aggiorna i valori del mese, i contatori degli oggetti/Bonus a utilizzi della CB e rimuove dal Bagaglio gli oggetti esauriti. Se il bersaglio non è univoco, l’accredito viene bloccato invece di modificare l’oggetto sbagliato."));var codeTa=el("textarea");codeTa.readOnly=true;codeOut.appendChild(codeTa);var codeCopy=el("button","copy-btn","Copia codice Scheda aggiornato");codeCopy.type="button";codeCopy.addEventListener(EV,function(){copyText(codeTa.value,codeCopy,codeTa);});codeOut.appendChild(codeCopy);row.appendChild(codeOut);
-    var extra=makeExtraInputs(tipoPg);calc.appendChild(el("div","calc-extra-title","Premi/malus extra del mese (Quest, Eventi, Prestigio, correzioni ecc.)"));calc.appendChild(extra.wrap);var prev=el("div","calc-preview");calc.appendChild(prev);var defs=staffFieldDefs(tipoPg);
+    var sheetBox=el("div","sheet-values-callout sheet-values-pending"),sheetTitle=el("div","sheet-values-title","✍ Scheda aggiornata cumulativa fino a "+canonicalMonthLabel(mese.nome)),sheetList=el("div","sheet-values-list","");
+    sheetBox.appendChild(sheetTitle);sheetBox.appendChild(sheetList);
+    var help=el("div","sheet-values-help","Ogni Scheda incorpora i mesi precedenti ANCORA da accreditare. Scegli fino a quale mese aggiornare il Forum; confermando quel mese, il Narratore registra insieme anche i precedenti mancanti, ognuno nel proprio storico.");sheetBox.appendChild(help);row.appendChild(sheetBox);
+    var codeOut=el("div","sheet-code-output");codeOut.style.display="none";
+    codeOut.appendChild(el("div","sheet-code-output-title","📋 Codice Scheda cumulativa fino a "+canonicalMonthLabel(mese.nome)));
+    codeOut.appendChild(el("div","sheet-code-output-help","Il codice contiene tutti i mesi non ancora accreditati fino a questo. Vengono aggiornati anche i contatori Bagaglio, mese per mese in ordine cronologico."));
+    var codeTa=el("textarea");codeTa.readOnly=true;codeOut.appendChild(codeTa);
+    var codeCopy=el("button","copy-btn","Copia codice Scheda aggiornata");codeCopy.type="button";codeCopy.addEventListener(EV,function(){copyText(codeTa.value,codeCopy,codeTa);});codeOut.appendChild(codeCopy);row.appendChild(codeOut);
+    var extra=makeExtraInputs(tipoPg),defs=staffFieldDefs(tipoPg),saved=monthDraftFor(pgEntry.id,mese.id);
+    for(var d=0;d<defs.length;d++){var key=defs[d].key;if(Object.prototype.hasOwnProperty.call(saved,key))extra.inputs[key].value=String(saved[key]);}
+    calc.appendChild(el("div","calc-extra-title","Premi/malus extra di "+canonicalMonthLabel(mese.nome)+" (solo di questo mese)"));calc.appendChild(extra.wrap);
+    var prev=el("div","calc-preview");calc.appendChild(prev);
+    var latestProjection=null;
     function preview(){
-      var live=localSheetState(pgEntry.id);if(!live.parsed||!live.parsed.ok){sheetList.textContent="⚠ Incolla la Scheda Valori e clicca «Leggi Scheda e avvia i calcoli».";prev.innerHTML="";codeOut.style.display="none";codeTa.value="";box.disabled=true;if(live.generated&&String(live.generated.meseId||"")===String(mese.id))live.generated=null;return null;}
-      var rdy=staffValuesReady(tipoPg,live.parsed.values||{});if(!rdy.ok){sheetList.textContent="⚠ Nella Scheda mancano: "+rdy.missing.join(", ")+".";prev.innerHTML="";codeOut.style.display="none";box.disabled=true;return null;}
-      var current=normalizeStaffValues(tipoPg,live.parsed.values||{}),ex=readInputsByDefs(defs,extra.inputs),stSummary=staffTokenMonthSummary(postsMese,mese,pgEntry.id,tipoPg),rec=applySheetDebtRules(computeStaffMonth(tipoPg,validPostCount(postsMese),gMese,ppMese,current,ex,mese.nome,"tracker",mese.id),live.parsed);rec.staffTokenPP=stSummary.count;rec.staffTokenUsageIds=stSummary.usageIds.slice();renderCalcPreview(prev,tipoPg,rec);var txt=sheetValuesText(rec);
-      var built=buildUpdatedSheetCode(tipoPg,live,rec,mese,postsMese);
-      if(built.ok){
-        var sheetParts=[];if(txt)sheetParts.push(txt);if(built.bagApplied&&built.bagApplied.length)sheetParts.push("Bagaglio: "+built.bagApplied.join(" · "));if(!sheetParts.length)sheetParts.push("Nessun valore della Scheda cambia con questo accredito.");sheetList.textContent=sheetParts.join(" · ");
-        codeOut.style.display="block";codeTa.value=built.code;live.generated={code:built.code,meseId:String(mese.id),record:rec};box.disabled=false;
-      }else{
-        codeOut.style.display="none";codeTa.value="";box.disabled=true;
-        var why=(built.mismatch&&built.mismatch.length)?(" Verifica fallita per: "+built.mismatch.join(", ")+"."):(built.bagWarnings&&built.bagWarnings.length)?(" Problema Bagaglio: "+built.bagWarnings.join(" · ")):(built.missing&&built.missing.length?(" Mancano: "+built.missing.join(", ")+"."):"");
-        sheetList.textContent="⚠ Il calcolo è stato eseguito, ma non posso generare in sicurezza la Scheda aggiornata."+why;
-        if(live.generated&&String(live.generated.meseId||"")===String(mese.id))live.generated=null;
-      }return rec;
+      var projection=projectPendingMonths(pgEntry,accreditiCollection,accreditiData,tipoPg,mese);
+      latestProjection=projection.ok?projection:null;
+      if(!projection.ok){sheetList.textContent="⚠ "+projection.message;prev.innerHTML="";codeOut.style.display="none";codeTa.value="";box.disabled=true;if(statusLbl)statusLbl.textContent="Da accreditare · calcolo non pronto";return null;}
+      var steps=projection.steps,rec=steps[steps.length-1].record,months=steps.map(function(x){return x.record.monthName;});
+      renderCalcPreview(prev,tipoPg,rec);
+      var total=steps.length,suffix=total>1?("Inclusi "+total+" mesi: "+months.join(" → ")+". Totale automatico: +"+fmtStaffNum(projection.totalG)+" Galeoni, +"+fmtStaffNum(projection.totalPP)+" PP."):("Incluso il solo mese di "+canonicalMonthLabel(mese.nome)+".");
+      var diffs=cumulativeSheetChanges(tipoPg,projection);
+      sheetList.innerHTML="";
+      if(projection.historical){suffix="<b>+"+projection.historical.count+" PP ST storici da recuperare</b> · "+suffix+" La Scheda include già entrambi i contributi.";}
+      sheetList.appendChild(el("div","cumulative-months","<b>"+suffix+"</b>"));
+      sheetList.appendChild(el("div",null,diffs.length?diffs.join(" · "):"Nessun valore numerico da modificare."));
+      if(projection.bagApplied.length)sheetList.appendChild(el("div",null,"Bagaglio: "+projection.bagApplied.join(" · ")));
+      help.textContent=total>1?("Copia questa Scheda, pubblicala sul Forum e poi spunta «Accreditato» di "+canonicalMonthLabel(mese.nome)+": verranno registrati insieme anche "+months.slice(0,-1).join(", ")+"."):("Copia questa Scheda, pubblicala sul Forum e poi spunta «Accreditato».");
+      if(projection.historical)help.textContent+=" Confermando questo mese verrà registrato anche il recupero di +"+projection.historical.count+" PP storici nello stesso salvataggio; non eseguire prima il recupero separato con la medesima Scheda.";
+      codeOut.style.display="block";codeTa.value=projection.code;box.disabled=false;
+      if(statusLbl)statusLbl.textContent=total>1?("Da accreditare · conferma " +total+" mesi insieme"):"Da accreditare";
+      box.title=total>1?("Conferma cumulativa: "+months.join(", ")):"Spunta dopo aver pubblicato la Scheda aggiornata sul Forum.";
+      return projection;
     }
-    Object.keys(extra.inputs).forEach(function(k){extra.inputs[k].addEventListener("input",preview);});preview();
-    box.title="Spunta solo dopo aver reincollato sul Forum il codice Scheda aggiornato indicato sopra.";
-    box._staffApply=function(nuovoValore){if(!nuovoValore)return null;var live=localSheetState(pgEntry.id);if(!live.parsed||!live.parsed.ok)return Promise.resolve({ok:false,code:"sheet-not-read"});if(!live.generated||String(live.generated.meseId||"")!==String(mese.id))return Promise.resolve({ok:false,code:"sheet-not-generated"});var rec=preview();if(!rec)return Promise.resolve({ok:false,code:"sheet-not-generated"});if(!live.generated||String(live.generated.meseId||"")!==String(mese.id))return Promise.resolve({ok:false,code:"sheet-not-generated"});var current=normalizeStaffValues(tipoPg,live.parsed.values||{});return window.fbApplyStaffMonth(accreditiCollection,pgEntry.id,rk,String(mese.id),rec,current,pgEntry.data&&pgEntry.data._dbRevision,mese,true);};
+    Object.keys(extra.inputs).forEach(function(k){extra.inputs[k].addEventListener("input",function(){saveMonthDraft(pgEntry.id,mese.id,readInputsByDefs(defs,extra.inputs));refreshCumulativePreviews(pgEntry.id);});});
+    if(!monthPreviewRefreshByPg[String(pgEntry.id)])monthPreviewRefreshByPg[String(pgEntry.id)]=[];
+    monthPreviewRefreshByPg[String(pgEntry.id)].push(preview);
+    preview();
+    box._staffApply=function(nuovoValore){
+      if(!nuovoValore)return null;
+      var live=localSheetState(pgEntry.id),projection=preview();
+      if(!live.parsed||!live.parsed.ok)return Promise.resolve({ok:false,code:"sheet-not-read"});
+      if(!projection||!projection.ok||!projection.code)return Promise.resolve({ok:false,code:"sheet-not-generated"});
+      var records=projection.steps,labels=records.map(function(x){return x.record.monthName;});
+      if(records.length>1||projection.historical){
+        var noteHistoric=projection.historical?("\nSaranno recuperati anche +"+projection.historical.count+" PP da ST storici già riscattati."):"";
+        if(!confirm("Hai già pubblicato sul Forum la Scheda CUMULATIVA fino a "+canonicalMonthLabel(mese.nome)+"?\n\nVerranno accreditati insieme "+records.length+" mesi, nell'ordine: "+labels.join(" → ")+"."+noteHistoric+"\n\nI mesi resteranno separati nello storico e non potranno essere accreditati una seconda volta."))return Promise.resolve({ok:false,code:"cancelled"});
+      }
+      live.generated={code:projection.code,meseId:String(mese.id),record:records[records.length-1].record};
+      return window.fbApplyStaffMonthsCumulative(accreditiCollection,pgEntry.id,records,projection.base,pgEntry.data&&pgEntry.data._dbRevision,projection.historical);
+    };
     row.appendChild(calc);
   }
 
@@ -2802,7 +2977,7 @@
     }
     if(pgEntry.data&&pgEntry.data.RICHIESTA_ELIMINAZIONE){var req=el("div","delete-request-alert","⚠ <b>Il PG ha richiesto l’eliminazione.</b>");var dis=el("button","action small","Annulla richiesta");dis.addEventListener(EV,function(){var pc=accreditiCollection==="accrediti_adulti"?"personaggi_adulti":"personaggi_studenti";dis.disabled=true;window.fbResolveDeleteRequest(pc,pgEntry.id).then(function(ok){if(ok)caricaTutto(function(){renderApp();});else{dis.disabled=false;alert("Operazione non riuscita.");}});});req.appendChild(dis);body.appendChild(req);}
     var tabs=el("div","pg-tabs"),panels={},active=pgActiveTabs[pgEntry.id]||"credit";[["credit","✅ Accredito"],["player","✏️ Dati Player"],["manage","⚙️ Gestione"]].forEach(function(x){var b=el("button","pg-tab"+(active===x[0]?" active":""),x[1]);b.type="button";b.addEventListener(EV,function(){pgActiveTabs[pgEntry.id]=x[0];Object.keys(panels).forEach(function(k){panels[k].hidden=k!==x[0];});var bs=tabs.querySelectorAll(".pg-tab");for(var i=0;i<bs.length;i++)bs[i].classList.remove("active");b.classList.add("active");ensureNonCreditTab(x[0]);});tabs.appendChild(b);var p=el("div","pg-tab-panel");p.hidden=active!==x[0];panels[x[0]]=p;});body.appendChild(tabs);body.appendChild(panels.credit);body.appendChild(panels.player);body.appendChild(panels.manage);
-    panels.credit.appendChild(el("div","quick-help","<b>Flusso accredito:</b> controlla i guadagni letti dall’Elfo del PG → incolla la Scheda Valori attuale → clicca «Leggi Scheda e avvia i calcoli» → controlla il risultato e copia la Scheda aggiornata → reincollala sul Forum → spunta «Accreditato». Solo allora il mese viene registrato nell’Elfo del PG e aggiunto al testo unico per il Registro Forum."));
+    panels.credit.appendChild(el("div","quick-help","<b>Scheda unica cumulativa:</b> incolla la Scheda attuale e clicca «Leggi Scheda e avvia i calcoli». Il recupero ST storico, quando presente e verificato, viene aggiunto anche alle Schede dei mesi ancora da accreditare. Se ci sono più mesi in sospeso, ogni risultato include anche quelli precedenti: <b>agosto → settembre → ottobre</b>. Copia la Scheda fino al mese che scegli, pubblicala sul Forum e <b>conferma quel mese</b>: il Narratore accrediterà nello stesso momento tutti i mesi inclusi, ciascuno nel proprio storico."));
     var cacheKey=accreditiCollection+"__"+pgEntry.id;
     var activeAccData=null,nonCreditBuilt={};
     function ensureNonCreditTab(tab){
@@ -2818,8 +2993,10 @@
       nonCreditBuilt.manage=true;
     }
     function renderWithAcc(accreditiData){
+      monthPreviewRefreshByPg[String(pgEntry.id)]=[];
+      monthCumulativeCacheByPg[String(pgEntry.id)]=null;
       var pendingCount=0;for(var pci=0;pci<mesi.length;pci++){var pm=mesi[pci];if(isImportedStudentMonth(pm))continue;var pe=findAppliedRecordEntryForMonth(accreditiData,pm,normalizeMonthName(pm&&pm.nome));if(!accreditiData[pm.id]&&!pe)pendingCount++;}pendingBadge.textContent=pendingCount?(pendingCount+" "+(pendingCount===1?"MESE":"MESI")+" DA ACCREDITARE"):"";pendingBadge.style.display=pendingCount?"inline-block":"none";
-      panels.credit.innerHTML="";panels.credit.appendChild(el("div","quick-help","<b>Flusso accredito:</b> controlla i guadagni letti dall’Elfo del PG → incolla la Scheda Valori attuale → clicca «Leggi Scheda e avvia i calcoli» → controlla il risultato e copia la Scheda aggiornata → reincollala sul Forum → spunta «Accreditato». Solo allora il mese viene registrato nell’Elfo del PG e aggiunto al testo unico per il Registro Forum."));appendSheetCodeReader(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffLedger(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffTokenRecoveryAudit(panels.credit,pgEntry,accreditiCollection,accreditiData);
+      panels.credit.innerHTML="";panels.credit.appendChild(el("div","quick-help","<b>Flusso cumulativo:</b> incolla la Scheda attuale e clicca «Leggi Scheda e avvia i calcoli». Se ci sono più mesi in sospeso, ogni risultato include anche quelli precedenti: <b>agosto → settembre → ottobre</b>. Copia la Scheda fino al mese che scegli, pubblicala sul Forum e <b>conferma quel mese</b>: il Narratore accrediterà nello stesso momento tutti i mesi inclusi, ciascuno nel proprio storico."));appendSheetCodeReader(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffLedger(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffTokenRecoveryAudit(panels.credit,pgEntry,accreditiCollection,accreditiData);
       var mode=pgMonthFilters[pgEntry.id]||"pending",filter=el("div","month-filter"),fc=el("div");fc.appendChild(el("label",null,"Mesi da mostrare"));var fs=el("select");[["pending","Da accreditare"],["all","Tutti"],["done","Accreditati"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];if(mode===x[0])o.selected=true;fs.appendChild(o);});fs.addEventListener("change",function(){pgMonthFilters[pgEntry.id]=fs.value;renderWithAcc(accreditiData);});fc.appendChild(fs);filter.appendChild(fc);panels.credit.appendChild(filter);
       var rendered=0,ordered=mesi.slice().sort(function(a,b){return monthKey(b&&b.nome)-monthKey(a&&a.nome);});for(var m=0;m<ordered.length;m++)(function(mese){var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),isDone=!!accreditiData[mese.id]||!!appliedEntry,isFocus=!!(lastAccredited&&lastAccredited.pgId===pgEntry.id&&String(lastAccredited.meseId)===String(mese.id));if(mode==="pending"&&isDone&&!isFocus)return;if(mode==="done"&&!isDone)return;rendered++;var row=el("div","mese-row"+(isDone?" is-accredited":"")+(isFocus?" is-focus":"")),postsMese=Array.isArray(mese.posts)?mese.posts:[],tipoPg=accreditiCollection==="accrediti_adulti"?"adulto":"studente",postValidi=validPostCount(postsMese),g=totaleG(tipoPg,postsMese,mese),pp=totalePP(postsMese,mese,pgEntry.id,tipoPg),info=el("div","mese-info");info.appendChild(el("div","mese-title",(mese.nome||"(mese senza nome)")+" — "+postValidi+" Post — "+g+" G — "+pp+" PP"));
         var verifiedST=staffTokenMonthSummary(postsMese,mese,pgEntry.id,tipoPg);if(verifiedST.count)info.appendChild(el("div","st-month-note","✓ Staff Token verificati: <b>+"+verifiedST.count+" PP</b> · già inclusi nel totale PP"));if(verifiedST.unmatched.length||verifiedST.unverifiedFlags.length)info.appendChild(el("div","st-month-warning","⚠ Riscatti ST da controllare: "+verifiedST.unmatched.length+" senza Post riconosciuto, "+verifiedST.unverifiedFlags.length+" spunte locali non confermate nel registro."));
@@ -2830,12 +3007,12 @@
               else{var lst=localSheetCodes[String(pgEntry.id||"")];if(lst){lst.parsed=null;lst.generated=null;}}
               openOnlyPg(nuovo?null:pgEntry.id);
               pgActiveTabs[pgEntry.id]="credit";
-              operationNotice=nuovo?("✓ "+pgEntry.id+" — "+mese.nome+" accreditato. Puoi aprire il PG successivo."):("✓ Accredito di "+pgEntry.id+" revocato.");
+              operationNotice=nuovo?("✓ "+pgEntry.id+" — "+(res&&res.creditedMonths>1?(res.creditedMonths+" mesi accreditati cumulativamente fino a "+mese.nome):(mese.nome+" accreditato"))+". Puoi aprire il PG successivo."):("✓ Accredito di "+pgEntry.id+" revocato.");
               clearAccreditiCache(accreditiCollection,pgEntry.id);
               /* L'accredito modifica il solo documento accrediti: non serve
                  riscaricare tutte le schede PG. Il nuovo stato si leggerà al bisogno. */
               renderApp();
-            }else{box.checked=!nuovo;box.disabled=false;alert(applyErrorMessage(res&&res.code));}}
+            }else{box.checked=!nuovo;box.disabled=false;if(res&&res.code!=="cancelled")alert(applyErrorMessage(res&&res.code));}}
           ).catch(function(e){console.error(e);box.checked=!nuovo;box.disabled=false;alert("Operazione interrotta. Controlla lo Storico prima di riprovare, per evitare un doppio accredito.");});});chk.appendChild(box);chk.appendChild(status);row.appendChild(chk);appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,g,pp,box,status);}
         panels.credit.appendChild(row);})(ordered[m]);if(!rendered)panels.credit.appendChild(el("p","small-note",mode==="pending"?"✓ Nessun Mese da accreditare.":"Nessun Mese in questa vista."));
       activeAccData=accreditiData;
