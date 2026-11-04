@@ -1,3 +1,4 @@
+<!-- v94 — 03/11/2026: PP Staff Token storici sommati alla Scheda senza blocco debito pendente; recupero sicuro anche con valore Firebase disallineato; Registro mensile include PP ST recuperati successivamente. -->
 <!-- v93 — 03/11/2026: recupero ST compatibile con debito PP, Scheda storica generata senza campi vuoti, storico ST incorporato nella Scheda cumulativa dei nuovi mesi e confermato atomicamente. -->
 <!-- v92 — 03/11/2026: Schede Valori cumulative per più mesi da accreditare; conferma atomica degli accrediti sottostanti. Mantiene ST v91. -->
 <!-- v91 — 03/11/2026: riscatti Staff Token (+1 PP) letti da staff_token_usi per il PG aperto; audit storico e recupero guidato idempotente. Mantiene v90. -->
@@ -434,7 +435,7 @@
 
   /* Recupero esplicito, idempotente e verificato in transazione. NON ripete
      gli accrediti mensili né altera le basi prima/dopo degli altri mesi. */
-  window.fbRecoverHistoricalStaffTokenPP = function(collectionName,pgId,items,expectedPP,expectedPgRevision){
+  window.fbRecoverHistoricalStaffTokenPP = function(collectionName,pgId,items,expectedPP,expectedPgRevision,expectedStoredPP,targetPP,debtSettledPP){
     if(!fbAuth.currentUser||fbAuth.currentUser.uid!==NARRATOR_UID)return Promise.resolve({ok:false,code:"unauthorized"});
     var ref=doc(fbDb,collectionName,pgId),pc=personCollectionForAccrediti(collectionName),pgRef=doc(fbDb,pc,pgId),auditRef=doc(collection(fbDb,pc,pgId,"audit"));
     return runTransaction(fbDb,async function(tx){
@@ -442,8 +443,9 @@
       if(!pgSnap.exists()||pgSnap.data()._deleted)throw new Error("missing-pg");
       var revision=Math.max(0,parseInt(pgSnap.data()._dbRevision,10)||0);
       if(revision!==Math.max(0,parseInt(expectedPgRevision,10)||0))throw new Error("stale-pg");
-      var data=accSnap.exists()?accSnap.data():{},state=data._staffState||{},v=state.values||{},before=Number(v.pp);
-      if(!Number.isFinite(before)||Math.abs(before-Number(expectedPP))>.001)throw new Error("stale-values");
+      var data=accSnap.exists()?accSnap.data():{},state=data._staffState||{},v=state.values||{},before=txOptionalStaffNum(v.pp),expectedDb=txOptionalStaffNum(expectedStoredPP);
+      if(before!==expectedDb)throw new Error("stale-values");
+      if(before!==null&&before>Number(expectedPP)+.001)throw new Error("stale-values");
       var months=data._staffMonths||{},patch={},checked=new Set(),sum=0,details=[];
       if(!Array.isArray(items)||!items.length)throw new Error("empty-recovery");
       for(var i=0;i<items.length;i++){
@@ -462,10 +464,13 @@
         patch[k]={staffTokenRecoveredPP:previous+delta,staffTokenRecoveryAt:serverTimestamp()};
         sum+=delta;details.push({month:old.monthName||k,delta:delta});
       }
-      /* Le modifiche degli stessi record restano parziali: nessuna riscrittura
-         dell'intera mappa e nessun cambiamento a before/after storici. */
-      tx.set(ref,{_staffState:Object.assign({},state,{values:Object.assign({},v,{pp:before+sum}),updatedAt:serverTimestamp()}),_staffMonths:patch,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:"Recupero PP storici da Staff Token"},{merge:true});
-      tx.set(auditRef,narratorEvent(pgId,"Recupero Staff Token","Recupero di +"+sum+" PP da ST per "+details.map(function(x){return x.month;}).join(", "),[{path:"valoriStaff.pp",before:before,after:before+sum},{path:"staffTokenRecovery",before:null,after:details}]));
+      var forumBefore=Number(expectedPP),debtApplied=Number(debtSettledPP)||0,after=Number(targetPP);
+      if(!Number.isFinite(forumBefore)||forumBefore<0||!Number.isInteger(debtApplied)||debtApplied<0||!Number.isFinite(after)||Math.abs(after-(forumBefore+sum-debtApplied))>.001||debtApplied>forumBefore+sum)throw new Error("invalid-recovery");
+      /* I PP di base derivano dalla Scheda effettiva sul Forum. Il saldo ST
+         viene sempre contabilizzato una sola volta, anche se il vecchio
+         _staffState.pp era assente o inferiore ai dati presenti sul Forum. */
+      tx.set(ref,{_staffState:Object.assign({},state,{values:Object.assign({},v,{pp:after}),updatedAt:serverTimestamp()}),_staffMonths:patch,_lastModifiedAt:serverTimestamp(),_lastModifiedBy:"narratore",_lastAction:"Recupero PP storici da Staff Token"},{merge:true});
+      tx.set(auditRef,narratorEvent(pgId,"Recupero Staff Token","Recupero di +"+sum+" PP da ST per "+details.map(function(x){return x.month;}).join(", "),[{path:"valoriStaff.pp",before:before,after:after},{path:"staffTokenRecovery",before:null,after:details},{path:"schedaForum.pp",before:forumBefore,after:after}]));
       return {sum:sum};
     }).then(function(res){return {ok:true,sum:res.sum};}).catch(function(e){console.error("Recupero ST:",e);return {ok:false,code:e&&e.message?e.message:"error"};});
   };
@@ -557,8 +562,8 @@
       if(historical){
         var histItems=historical.items||[],used=new Set(),staffKind=collectionName==="accrediti_adulti"?"adulti":"studenti";
         if(!Array.isArray(histItems)||!histItems.length||!Number.isInteger(Number(historical.count))||Number(historical.count)<=0)throw new Error("invalid-recovery");
-        var actualStored=Number(state.values&&state.values.pp);
-        if(!Number.isFinite(actualStored)||Math.abs(actualStored-Number(base.pp))>.001)throw new Error("stale-values");
+        var actualStored=txOptionalStaffNum(state.values&&state.values.pp),expectedStored=txOptionalStaffNum(historical.expectedStoredPP);
+        if(actualStored!==expectedStored||actualStored!==null&&actualStored>Number(base.pp)+.001)throw new Error("stale-values");
         for(var hi=0;hi<histItems.length;hi++){
           var item=histItems[hi]||{},hk=String(item.key||""),old=months[hk],delta=Number(item.delta),hids=item.usageIds||[];
           if(!old||old.applied===false||!hk||!Number.isInteger(delta)||delta<=0||!Array.isArray(hids)||!hids.length)throw new Error("invalid-recovery");
@@ -574,8 +579,9 @@
           patch[hk]={staffTokenRecoveredPP:prior+delta,staffTokenRecoveryAt:serverTimestamp()};
           months[hk]=Object.assign({},old,patch[hk]);histSum+=delta;histDetails.push(old.monthName||hk);
         }
-        if(histSum!==Number(historical.count)||Math.abs(Number(historical.afterPP)-(Number(base.pp)+histSum))>.001)throw new Error("invalid-recovery");
-        priorAfter=Object.assign({},base,{pp:Number(base.pp)+histSum});
+        var histDebtApplied=Number(historical.debtSettledPP)||0;
+        if(histSum!==Number(historical.count)||!Number.isInteger(histDebtApplied)||histDebtApplied<0||histDebtApplied>Number(base.pp)+histSum||Math.abs(Number(historical.afterPP)-(Number(base.pp)+histSum-histDebtApplied))>.001)throw new Error("invalid-recovery");
+        priorAfter=Object.assign({},base,{pp:Number(historical.afterPP)});
       }
       for(var si=0;si<steps.length;si++){
         var item=steps[si]||{},r=item.record||{},mid=String(item.meseId||""),rk=String(item.recordKey||""),order=Number(r.monthOrder);
@@ -1937,7 +1943,21 @@
   function changedStaffParts(record){var defs=staffFieldDefs(record&&record.tipo),parts=[];for(var i=0;i<defs.length;i++){var d=defs[i],a=optionalNum(record&&record.after&&record.after[d.key]),net=recordNet(record,d.key),debt=recordDebtSettlement(record,d.key);if(a===null||(!debt&&Math.abs(net)<.00001))continue;parts.push({key:d.key,label:d.label,after:a,net:net,debt:debt});}return parts;}
   function resourceMonthDelta(record,key){var base=key==="galeoni"?(Number(record&&record.earnedG)||0):(Number(record&&record.earnedPP)||0),extra=optionalNum(record&&record.extra&&record.extra[key]);return Math.round((base+(extra||0))*100)/100;}
   function registryDisplayLabel(key,label){if(key==="pp")return "Punti Post";return label;}
-  function registryLineFromRecord(pgName,record){var changed=changedStaffParts(record),credit=[],cap=prestigeThresholdReached(record),debtDone=recordHasDebtSettlement(record);if(!changed.length&&!cap&&!debtDone)return "";var resourceKeys=["galeoni","pp"];for(var ri=0;ri<resourceKeys.length;ri++){var rk=resourceKeys[ri],delta=resourceMonthDelta(record,rk);if(Math.abs(delta)>.00001)credit.push(fmtSigned(delta)+" "+(rk==="galeoni"?"Galeoni":"Punti Post"));}var lead="<b>"+pgName+":</b>"+(credit.length?" "+credit.join(", "):""),segments=[],parts=[];for(var j=0;j<changed.length;j++)parts.push(registryDisplayLabel(changed[j].key,changed[j].label)+" <b>"+fmtStaffNum(changed[j].after)+"</b> ("+changeFormula(record,changed[j].key)+")");if(parts.length)segments.push("<b>Nuovi valori in Scheda:</b> "+parts.join("; "));if(debtDone)segments.push("<b>Debito estinto!</b>");if(cap)segments.push("<b>Soglia massima Prestigio raggiunta</b>");return lead+(segments.length?" | "+segments.join(" | "):"");}
+  function registryLineFromRecord(pgName,record){
+    var changed=changedStaffParts(record),credit=[],cap=prestigeThresholdReached(record),debtDone=recordHasDebtSettlement(record),lateST=Math.max(0,Number(record&&record.staffTokenRecoveredPP)||0);
+    if(!changed.length&&!cap&&!debtDone&&!lateST)return "";
+    var resources=["galeoni","pp"];
+    for(var ri=0;ri<resources.length;ri++){
+      var rk=resources[ri],regular=resourceMonthDelta(record,rk),delta=regular+(rk==="pp"?lateST:0);
+      if(Math.abs(delta)>.00001)credit.push(fmtSigned(delta)+" "+(rk==="galeoni"?"Galeoni":"Punti Post")+(rk==="pp"&&lateST?" (di cui +"+fmtStaffNum(lateST)+" PP ST recuperati successivamente)":""));
+    }
+    var lead="<b>"+pgName+":</b>"+(credit.length?" "+credit.join(", "):""),segments=[],parts=[];
+    for(var j=0;j<changed.length;j++)parts.push(registryDisplayLabel(changed[j].key,changed[j].label)+" <b>"+fmtStaffNum(changed[j].after)+"</b> ("+changeFormula(record,changed[j].key)+")");
+    if(parts.length)segments.push(lateST?"<b>Valori applicati nell'accredito originario:</b> "+parts.join("; "):"<b>Nuovi valori in Scheda:</b> "+parts.join("; "));
+    if(lateST)segments.push("<b>Riscatti Staff Token successivi:</b> +"+fmtStaffNum(lateST)+" PP aggiunti al saldo corrente con recupero storico confermato");
+    if(debtDone)segments.push("<b>Debito estinto!</b>");if(cap)segments.push("<b>Soglia massima Prestigio raggiunta</b>");
+    return lead+(segments.length?" | "+segments.join(" | "):"");
+  }
   function sheetValuesText(record){var changed=changedStaffParts(record),parts=[];for(var i=0;i<changed.length;i++)parts.push(registryDisplayLabel(changed[i].key,changed[i].label)+": "+changeFormula(record,changed[i].key));if(recordHasDebtSettlement(record))parts.push("Debito estinto!");return parts.join(" · ");}
   function registryLineForMonth(pgEntry,accreditiCollection,accreditiData,mese){
     var tipo=accreditiCollection==="accrediti_adulti"?"adulto":"studente",entry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome));if(entry&&entry.record)return registryLineFromRecord(pgDisplayName(pgEntry),entry.record);
@@ -2342,7 +2362,7 @@
 
     var dSel=el("div");dSel.appendChild(el("label",null,"Mese del riepilogo"));var sel=el("select");for(var mi=0;mi<monthNames.length;mi++){var o=el("option",null,monthNames[mi]);o.value=monthNames[mi];if(monthNames[mi]===meseRiepilogoSelezionato)o.selected=true;sel.appendChild(o);}sel.addEventListener("change",function(){meseRiepilogoSelezionato=sel.value;renderRiepilogoMensile(container);});dSel.appendChild(sel);container.appendChild(dSel);
 
-    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],bagLines=[],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[];
+    var lines=["<b>Accrediti Camera Blindata — "+meseRiepilogoSelezionato+":</b>"],bagLines=[],count=0,ambiguousPg=[],selectedMonthNorm=normalizeMonthName(meseRiepilogoSelezionato),notProcessed=[],latePending=[];
     for(var j=0;j<entries.length;j++){
       var entry=entries[j],mesiPg=entry.pg.data.MESI||[],matches=[];
       for(var mm=0;mm<mesiPg.length;mm++){if(isImportedStudentMonth(mesiPg[mm]))continue;var mn=normalizeMonthName(mesiPg[mm].nome);if(mn&&mn===selectedMonthNorm)matches.push(mesiPg[mm]);}
@@ -2359,10 +2379,19 @@
         }
       }
 
-      if(record){var recordLine=registryLineFromRecord(pgDisplayName(entry.pg),record);if(recordLine){lines.push(recordLine);count++;}continue;}
+      if(record){
+        var recordLine=registryLineFromRecord(pgDisplayName(entry.pg),record);
+        if(recordLine){lines.push(recordLine);count++;}
+        /* Non incrementiamo il Registro con ST ancora non confermati: per
+           i riscatti tardivi si mostra invece un avviso, solo se il PG è già
+           stato aperto e quindi il suo cache ST è disponibile. */
+        if(mese){var summaryLate=staffTokenMonthSummary(mese.posts||[],mese,entry.pg.id,entry.tipo);if(summaryLate.ready){var lateCount=Math.max(0,summaryLate.count-(Number(record.staffTokenPP)||0)-(Number(record.staffTokenRecoveredPP)||0));if(lateCount)latePending.push(pgDisplayName(entry.pg)+" ("+lateCount+" PP ST da recuperare)");}}
+        continue;
+      }
       if(!mese)continue;
       var posts=Array.isArray(mese.posts)?mese.posts:[],g=totaleG(entry.tipo,posts,mese),pp=totalePP(posts,mese,entry.pg.id,entry.tipo),riga="<b>"+pgDisplayName(entry.pg)+":</b> +"+g+" Galeoni";if(pp>0)riga+=", +"+pp+" PP";riga+=" <i>(accredito precedente al calcolatore Staff)</i>";lines.push(riga);count++;
     }
+    if(latePending.length)container.appendChild(el("div","warning-alert","⚠ Riscatti Staff Token successivi non ancora confermati per "+meseRiepilogoSelezionato+": "+latePending.join(", ")+". Non sono inclusi nel codice Registro finché il recupero non viene registrato nel Narratore."));
     if(ambiguousPg.length)container.appendChild(el("div","warning-alert","⚠ Esclusi dal riepilogo perché hanno più Mesi chiamati «"+meseRiepilogoSelezionato+"»: <b>"+ambiguousPg.join(", ")+"</b>. Rinomina una delle vecchie voci nel relativo Tracker e poi aggiorna il pannello."));
     if(notProcessed.length)container.appendChild(el("p","small-note","Non ancora processati per "+meseRiepilogoSelezionato+": "+notProcessed.join(", ")+". I PG senza CB possono essere registrati come 0 post dalla sezione «Storico accrediti e accredito 0 post» del relativo PG."));
     if(count===0){container.appendChild(el("p","small-note","Nessun accredito confermato per "+meseRiepilogoSelezionato+". Se hai appena lavorato un altro mese, selezionalo qui."));return;}
@@ -2771,7 +2800,7 @@
     });
     var det=el("details","st-audit"),total=audit.reduce(function(n,a){return n+a.pending;},0);
     det.appendChild(el("summary",null,"🪙 Verifica Staff Token · "+(total?"fino a "+total+" PP storici da controllare":"nessun recupero automatico sospeso")));
-    det.appendChild(el("p","small-note","Fonte: riscatti attivi su staff_token_usi. +1 PP per riscatto valido. Il recupero è separato dagli accrediti mensili: non riaccreditare settembre/ottobre e non revocare mesi successivi."));
+    det.appendChild(el("p","small-note","+1 Punto Post per ogni riscatto Staff Token verificato. Nei mesi già accreditati i PP arrivati dopo vengono recuperati senza ripetere Galeoni o variazioni sociali. Dopo la conferma compaiono anche nel Registro del mese originale."));
     if(!audit.length&&!legacy.length){staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;det.appendChild(el("p","small-note","Non risultano riscatti su mesi già accreditati."));card.appendChild(det);return;}
     staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;
     var form=el("div"),inputs=[];
@@ -2807,16 +2836,20 @@
         function fail(msg){error.textContent=msg;error.style.display="block";refreshCumulativePreviews(pgEntry.id);}
         var state=localSheetState(pgEntry.id),stored=accreditiData._staffState&&accreditiData._staffState.values||{},forumPP=state.parsed&&state.parsed.ok?optionalNum(state.parsed.values.pp):null,dbPP=optionalNum(stored.pp);
         if(forumPP===null){fail("Prima incolla e leggi la Scheda Valori attualmente pubblicata sul Forum; il codice aggiornato comparirà qui automaticamente.");return;}
-        if(dbPP===null||Math.abs(dbPP-forumPP)>.001){fail("⚠ La Scheda del Forum indica "+fmtStaffNum(forumPP)+" PP, ma il Narratore ne registra "+fmtStaffNum(dbPP)+". Non è sicuro generare un recupero da questa base prima di riallineare i dati.");return;}
+        var dbAhead=dbPP!==null&&dbPP>forumPP+.001;
         var base=normalizeStaffValues(tipo,state.parsed.values||{}),newAfter=Object.assign({},base,{pp:base.pp+count}),synthetic={tipo:tipo,before:base,after:newAfter,extra:{pp:0},earnedPP:count,earnedG:0};
+        /* Il Debito PP è distinto dal saldo PP: resta come testo e valore
+           indipendente finché il totale aggiornato non lo estingue. */
         applySheetDebtRules(synthetic,state.parsed);
-        if(recordDebtSettlement(synthetic,"pp")){fail("⚠ Il recupero estinguerebbe un Debito PP. Il saldo va controllato prima di procedere perché lo storico ST deve conservare la contabilità corretta.");return;}
         var built=buildUpdatedSheetCode(tipo,state,synthetic);
         if(!built.ok){fail("⚠ Impossibile generare la Scheda: "+(built.missing||built.mismatch||built.bagWarnings||[]).join(", ")+". Controlla il codice incollato.");return;}
         codeTa.value=built.code;out.hidden=false;
         var debt=state.parsed.debts&&state.parsed.debts.pp;
-        codeHelp.textContent="Punti Post: "+fmtStaffNum(base.pp)+" → "+fmtStaffNum(synthetic.after.pp)+" (+"+count+" PP da ST storici)."+(debt?" Il Debito Punti Post di "+fmtStaffNum(debt.value)+" rimane invariato perché non è stato ancora estinto.":"")+" Per sommarli anche ai mesi ancora aperti, copia invece la Scheda cumulativa del mese più recente.";
-        var plan={items:items,count:count,afterPP:synthetic.after.pp,code:built.code};
+        var debtDone=recordDebtSettlement(synthetic,"pp"),debtLabel=debt?(debtDone?" Il Debito Punti Post di "+fmtStaffNum(debt.value)+" viene estinto e rimosso dalla Scheda.":" Il Debito Punti Post di "+fmtStaffNum(debt.value)+" resta invariato, separato dal saldo."):"";
+        codeHelp.textContent="Punti Post: "+fmtStaffNum(base.pp)+" → "+fmtStaffNum(synthetic.after.pp)+" (+"+count+" PP da ST storici)."+debtLabel+" Per includere anche mesi ancora aperti, copia la Scheda cumulativa del mese più recente.";
+        out.querySelectorAll(".st-sync-note").forEach(function(node){node.remove();});
+        if(dbPP===null||Math.abs(dbPP-forumPP)>.001){var syncText=dbAhead?("⚠ Il Narratore registra "+fmtStaffNum(dbPP)+" PP, più dei "+fmtStaffNum(forumPP)+" PP della Scheda Forum. Il codice corretto è visibile e copiabile, ma la conferma su Firebase è bloccata per non sovrascrivere un saldo più recente. Verifica il valore corretto."):("ℹ Il Narratore registra "+fmtStaffNum(dbPP)+" PP, mentre la Scheda Forum ne mostra "+fmtStaffNum(forumPP)+". Il codice si basa sulla Scheda Forum; alla conferma verranno riallineati i PP del Narratore. Verifica che il Forum sia aggiornato.");var syncNote=el("div","st-audit-warning st-sync-note",syncText);out.insertBefore(syncNote,codeTa);}
+        var plan={items:items,count:count,afterPP:synthetic.after.pp,code:built.code,expectedStoredPP:dbPP,debtSettledPP:debtDone?Number(debtDone.debt):0};
         staffHistoricalRecoveryByPg[String(pgEntry.id)]=plan;
         var snapshot=JSON.stringify(items),expectedPP=forumPP;
         confirmButton.onclick=function(){
@@ -2824,7 +2857,7 @@
           if(JSON.stringify(items)!==snapshot)return;
           if(!confirm("Confermi che la Scheda Valori pubblicata sul Forum contiene già +"+count+" PP ST e che questi PP non erano stati accreditati prima? Questa operazione corregge SOLO il saldo corrente e annota gli storici, senza ripetere gli accrediti."))return;
           confirmButton.disabled=true;
-          window.fbRecoverHistoricalStaffTokenPP(collectionName,pgEntry.id,items,expectedPP,pgEntry.data&&pgEntry.data._dbRevision).then(function(res){
+          window.fbRecoverHistoricalStaffTokenPP(collectionName,pgEntry.id,items,expectedPP,pgEntry.data&&pgEntry.data._dbRevision,dbPP,synthetic.after.pp,debtDone?Number(debtDone.debt):0).then(function(res){
             if(res&&res.ok){
               var sheet=localSheetState(pgEntry.id);sheet.raw=built.code;sheet.parsed=parseSheetCode(tipo,built.code);sheet.generated=null;
               staffHistoricalRecoveryByPg[String(pgEntry.id)]=null;
@@ -2833,10 +2866,10 @@
             }else{error.textContent="⚠ Recupero non eseguito: "+String(res&&res.code||"errore")+". Controlla lo Storico prima di riprovare.";error.style.display="block";ck.checked=false;}
           }).catch(function(e){error.textContent="⚠ Recupero interrotto: "+String(e&&e.message||e);error.style.display="block";});
         };
-        confirmButton.disabled=!ck.checked;
+        confirmButton.disabled=!ck.checked||dbAhead;
         refreshCumulativePreviews(pgEntry.id);
       }
-      ck.addEventListener("change",function(){confirmButton.disabled=!ck.checked||out.hidden||!codeTa.value||error.style.display!=="none";});
+      ck.addEventListener("change",function(){var current=accreditiData._staffState&&accreditiData._staffState.values||{},remotePP=optionalNum(current.pp),forumPP=localSheetState(pgEntry.id).parsed&&localSheetState(pgEntry.id).parsed.values?optionalNum(localSheetState(pgEntry.id).parsed.values.pp):null;confirmButton.disabled=!ck.checked||out.hidden||!codeTa.value||error.style.display!=="none"||(remotePP!==null&&forumPP!==null&&remotePP>forumPP+.001);});
       inputs.forEach(function(x){x.inp.addEventListener("input",previewRecovery);});
       actions.appendChild(summary);actions.appendChild(error);actions.appendChild(out);det.appendChild(actions);previewRecovery();
     }
@@ -2884,7 +2917,7 @@
       if(!stateCode.parsed.ok)return {ok:false,message:"La Scheda aggiornata di "+canonicalMonthLabel(month.nome)+" non è leggibile in modo sicuro."};
       /* Salva ogni prefisso: l'anteprima di ottobre prepara anche quelle di
          agosto e settembre, evitando di rielaborare il lungo codice più volte. */
-      memo.byMonth[String(month.id)]={ok:true,steps:steps.slice(),code:stateCode.raw,base:normalizeStaffValues(tipo,base.values||{}),after:values,historical:historic?{items:historic.items,count:historic.count,afterPP:historic.afterPP}:null,bagApplied:bagApplied.slice(),totalG:sumG,totalPP:sumPP};
+      memo.byMonth[String(month.id)]={ok:true,steps:steps.slice(),code:stateCode.raw,base:normalizeStaffValues(tipo,base.values||{}),after:values,historical:historic?{items:historic.items,count:historic.count,afterPP:historic.afterPP,expectedStoredPP:historic.expectedStoredPP,debtSettledPP:historic.debtSettledPP}:null,bagApplied:bagApplied.slice(),totalG:sumG,totalPP:sumPP};
     }
     return memo.byMonth[targetId];
   }
@@ -2901,7 +2934,7 @@
   function appendMonthCalculator(row,pgEntry,accreditiCollection,accreditiData,mese,tipoPg,postsMese,gMese,ppMese,box,statusLbl){
     var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese&&mese.nome)),stored=appliedEntry?appliedEntry.record:null,tracked=!!stored,calc=el("details","month-calc");
     calc.appendChild(el("summary",null,tracked?"🧮 Variazioni già applicate":"🧮 Dettaglio del calcolo mensile"));
-    if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);calc.appendChild(el("p","small-note","Accredito già registrato. I valori mostrati sono quelli applicati in quel momento."));row.appendChild(calc);return;}
+    if(tracked){var pr=el("div","calc-preview");renderCalcPreview(pr,tipoPg,stored);calc.appendChild(pr);if(Number(stored.staffTokenRecoveredPP)>0)calc.appendChild(el("div","st-month-note","✓ Recupero Staff Token successivo: <b>+"+fmtStaffNum(stored.staffTokenRecoveredPP)+" PP</b> aggiunti al saldo del PG e al Registro del mese."));calc.appendChild(el("p","small-note","Il dettaglio originario resta invariato; gli ST riscattati dopo l'accredito sono registrati come integrazione separata nello stesso mese."));row.appendChild(calc);return;}
     if(accreditiData[mese.id]){calc.appendChild(el("p","legacy-credit","Accredito storico: i valori correnti non vengono ricalcolati retroattivamente."));row.appendChild(calc);return;}
     var sheetBox=el("div","sheet-values-callout sheet-values-pending"),sheetTitle=el("div","sheet-values-title","✍ Scheda aggiornata cumulativa fino a "+canonicalMonthLabel(mese.nome)),sheetList=el("div","sheet-values-list","");
     sheetBox.appendChild(sheetTitle);sheetBox.appendChild(sheetList);
@@ -2999,7 +3032,7 @@
       panels.credit.innerHTML="";panels.credit.appendChild(el("div","quick-help","<b>Flusso cumulativo:</b> incolla la Scheda attuale e clicca «Leggi Scheda e avvia i calcoli». Se ci sono più mesi in sospeso, ogni risultato include anche quelli precedenti: <b>agosto → settembre → ottobre</b>. Copia la Scheda fino al mese che scegli, pubblicala sul Forum e <b>conferma quel mese</b>: il Narratore accrediterà nello stesso momento tutti i mesi inclusi, ciascuno nel proprio storico."));appendSheetCodeReader(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffLedger(panels.credit,pgEntry,accreditiCollection,accreditiData);appendStaffTokenRecoveryAudit(panels.credit,pgEntry,accreditiCollection,accreditiData);
       var mode=pgMonthFilters[pgEntry.id]||"pending",filter=el("div","month-filter"),fc=el("div");fc.appendChild(el("label",null,"Mesi da mostrare"));var fs=el("select");[["pending","Da accreditare"],["all","Tutti"],["done","Accreditati"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];if(mode===x[0])o.selected=true;fs.appendChild(o);});fs.addEventListener("change",function(){pgMonthFilters[pgEntry.id]=fs.value;renderWithAcc(accreditiData);});fc.appendChild(fs);filter.appendChild(fc);panels.credit.appendChild(filter);
       var rendered=0,ordered=mesi.slice().sort(function(a,b){return monthKey(b&&b.nome)-monthKey(a&&a.nome);});for(var m=0;m<ordered.length;m++)(function(mese){var appliedEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),isDone=!!accreditiData[mese.id]||!!appliedEntry,isFocus=!!(lastAccredited&&lastAccredited.pgId===pgEntry.id&&String(lastAccredited.meseId)===String(mese.id));if(mode==="pending"&&isDone&&!isFocus)return;if(mode==="done"&&!isDone)return;rendered++;var row=el("div","mese-row"+(isDone?" is-accredited":"")+(isFocus?" is-focus":"")),postsMese=Array.isArray(mese.posts)?mese.posts:[],tipoPg=accreditiCollection==="accrediti_adulti"?"adulto":"studente",postValidi=validPostCount(postsMese),g=totaleG(tipoPg,postsMese,mese),pp=totalePP(postsMese,mese,pgEntry.id,tipoPg),info=el("div","mese-info");info.appendChild(el("div","mese-title",(mese.nome||"(mese senza nome)")+" — "+postValidi+" Post — "+g+" G — "+pp+" PP"));
-        var verifiedST=staffTokenMonthSummary(postsMese,mese,pgEntry.id,tipoPg);if(verifiedST.count)info.appendChild(el("div","st-month-note","✓ Staff Token verificati: <b>+"+verifiedST.count+" PP</b> · già inclusi nel totale PP"));if(verifiedST.unmatched.length||verifiedST.unverifiedFlags.length)info.appendChild(el("div","st-month-warning","⚠ Riscatti ST da controllare: "+verifiedST.unmatched.length+" senza Post riconosciuto, "+verifiedST.unverifiedFlags.length+" spunte locali non confermate nel registro."));
+        var verifiedST=staffTokenMonthSummary(postsMese,mese,pgEntry.id,tipoPg);if(verifiedST.count){var isIncluded=appliedEntry?Math.max(0,Number(appliedEntry.record.staffTokenPP)||0)+Math.max(0,Number(appliedEntry.record.staffTokenRecoveredPP)||0):0;info.appendChild(el("div","st-month-note","✓ Staff Token verificati: <b>+"+verifiedST.count+" PP</b>"+(isDone?" · "+isIncluded+" già accreditati · "+Math.max(0,verifiedST.count-isIncluded)+" da recuperare":" · inclusi nel totale PP del mese")));}if(verifiedST.unmatched.length||verifiedST.unverifiedFlags.length)info.appendChild(el("div","st-month-warning","⚠ Riscatti ST da controllare: "+verifiedST.unmatched.length+" senza Post riconosciuto, "+verifiedST.unverifiedFlags.length+" spunte locali non confermate nel registro."));
         var bonuses=narratorAllBonuses(mese);for(var bi=0;bi<bonuses.length;bi++){var b=bonuses[bi],count=narratorBonusCount(postsMese,b),parts=[];if(b.pp>0)parts.push("+"+b.pp+" PP/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.galeoni>0)parts.push("+"+b.galeoni+" G/"+(b.modalita==="all"||b.modalita==="first"?"post":"utilizzo"));if(b.altro)parts.push(b.altro);if(b.modalita==="first")parts.push(count+"/"+postValidi+" Post con bonus · primi "+b.primiPost);else if(b.modalita==="all")parts.push(count+"/"+postValidi+" Post con bonus");else if(b.maxUtilizzi>0)parts.push("utilizzi "+narratorBonusCurrentUses(postsMese,b)+"/"+b.maxUtilizzi);else parts.push("utilizzi "+count);info.appendChild(el("div","cb-notes","<b>Bonus:</b> "+narratorBonusName(b,bi)+" — "+parts.join(" · ")));}
         var noteParts=[];for(var n=0;n<postsMese.length;n++){var nt=String(postsMese[n]&&postsMese[n].nota||"").trim();if(nt)noteParts.push("Post "+(n+1)+": "+nt);}if(noteParts.length)info.appendChild(el("div","cb-notes","<b>Note:</b> "+noteParts.join(" · ")));var bag=narratorBagWarnings(mese,postsMese);for(var bw=0;bw<bag.length;bw++)info.appendChild(el("div",bag[bw].kind==="remove"?"bag-remove-warning":"bag-update-warning",bag[bw].text));row.appendChild(info);
         var chk=el("div","chk-line");if(isImportedStudentMonth(mese)){chk.appendChild(el("span","small-note","📦 Storico importato"));}else{var box=el("input");box.type="checkbox";box.checked=isDone;var status=el("span",isDone?"status-ok":"status-pending",isDone?"Accreditato":"Da accreditare");if(!isDone){var due=[g+" G",pp+" PP"],alt=allBonusAltro(mese,postsMese);if(alt)due.push("Altro: "+alt);info.appendChild(el("div","credit-due-badge","DA ACCREDITARE: "+due.join(" · ")));}box.addEventListener(EV,function(){var nuovo=box.checked,currentEntry=findAppliedRecordEntryForMonth(accreditiData,mese,normalizeMonthName(mese.nome)),stored=currentEntry?currentEntry.record:null,promise;box.disabled=true;if(nuovo&&box._staffApply){promise=box._staffApply(true);}else if(!nuovo&&stored&&stored.applied!==false){var currentStaff=normalizeStaffValues(tipoPg,(accreditiData._staffState&&accreditiData._staffState.values)||{}),afterStaff=normalizeStaffValues(tipoPg,stored.after||{}),hasExternal=stableJson(currentStaff)!==stableJson(afterStaff),opts=null;if(hasExternal){var projected=preservedValuesAfterRevoke(tipoPg,stored,currentStaff),extLines=revokeExternalSummary(tipoPg,stored,currentStaff,projected),bounds=revokeBoundWarnings(tipoPg,stored,currentStaff),msg="Sono presenti variazioni successive all’accredito di "+(stored.monthName||mese.nome)+".\n\nLa revoca manterrà queste variazioni e rimuoverà soltanto l’effetto dell’accredito."+(extLines.length?"\n\n"+extLines.join("\n"):"")+(bounds.length?"\n\nATTENZIONE: "+bounds.join(", ")+" ha/hanno toccato un limite minimo o massimo. Verifica il risultato con la Scheda PG dopo la revoca.":"");if(!confirm(msg)){box.checked=true;box.disabled=false;return;}opts={preserveExternal:true,expectedCurrentValues:currentStaff,nextValues:projected};}promise=window.fbRevokeStaffMonth(accreditiCollection,pgEntry.id,currentEntry.key,stored.meseId?String(stored.meseId):"",opts);}else{promise=window.fbSetAccredito(accreditiCollection,pgEntry.id,String(mese.id),nuovo,pgEntry.data&&pgEntry.data._dbRevision,mese);}Promise.resolve(promise).then(function(res){if(res&&res.ok){lastAccredited=null;
